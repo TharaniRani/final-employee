@@ -1,0 +1,89 @@
+:root {
+    color-scheme: light;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    color: #172033;
+    background: #f3f6fb;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+.hr-page {
+    width: min(1100px, calc(100% - 32px));
+    margin: 42px auto;
+}
+
+.hr-header, .toolbar, .hr-account {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.hr-header { margin-bottom: 28px; }
+.eyebrow { color: #2856a6; font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+h1 { margin: 4px 0 8px; font-size: clamp(1.7rem, 4vw, 2.4rem); }
+h2 { margin-top: 0; }
+.hr-header p:last-child, .panel p { color: #596579; }
+.hr-account { flex-wrap: wrap; justify-content: flex-end; }
+
+.panel, .submission-card {
+    background: white;
+    border: 1px solid #dce3ee;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgb(27 50 89 / 6%);
+}
+
+.login-panel { max-width: 440px; padding: 28px; }
+form { display: grid; gap: 10px; }
+label { margin-top: 7px; font-weight: 600; }
+input[type="text"], input[type="password"], input:not([type]) {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #bbc7d9;
+    border-radius: 7px;
+    font: inherit;
+}
+
+.button {
+    min-height: 42px;
+    padding: 9px 16px;
+    border: 0;
+    border-radius: 7px;
+    color: #fff;
+    background: #2454a6;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.button:hover { background: #183f84; }
+.button-secondary { color: #23436f; background: #e9eff8; }
+.button-secondary:hover { background: #dce6f4; }
+.toolbar { margin: 24px 0 14px; }
+.toolbar h2 { margin: 0; }
+.submission-list { display: grid; gap: 16px; }
+.submission-card { padding: 22px; }
+.submission-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; color: #596579; font-size: .92rem; }
+.submission-card details { margin: 16px 0; }
+.submission-card summary { cursor: pointer; font-weight: 700; }
+.submission-json { max-height: 380px; overflow: auto; padding: 16px; background: #f5f7fb; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .82rem; }
+.approval-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 8px; margin: 16px 0; }
+.approval-fields label { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 9px; border: 1px solid #e0e6ef; border-radius: 6px; font-size: .9rem; font-weight: 500; }
+.approval-fields input { margin-top: 3px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.reject-button { background: #a12e3c; }
+.reject-button:hover { background: #812332; }
+.notice { min-height: 1.4em; color: #2856a6; }
+.notice.error { color: #a12e3c; }
+.empty-state { padding: 26px; border: 1px dashed #aebbd0; border-radius: 10px; color: #596579; text-align: center; }
+code { padding: 2px 4px; border-radius: 4px; background: #eef2f8; }
+
+@media (max-width: 650px) {
+    .hr-page { margin: 22px auto; }
+    .hr-header, .toolbar { align-items: flex-start; flex-direction: column; }
+    .hr-account { justify-content: flex-start; }
+    .login-panel, .submission-card { padding: 18px; }
+}
