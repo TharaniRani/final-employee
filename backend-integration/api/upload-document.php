@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/document-storage.php';
 
 session_start();
 
@@ -34,6 +35,11 @@ if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
 $file = $_FILES['file'];
 $documentType = $_POST['document_type'] ?? 'document';
 $metadata = json_decode($_POST['metadata'] ?? '{}', true);
+if (!is_string($documentType) || strlen($documentType) > 100) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Invalid document category']);
+    exit;
+}
 
 // Validate file
 $allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -66,13 +72,15 @@ try {
     $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
     $secureName = bin2hex(random_bytes(16)) . '.' . strtolower($extension);
 
-    // Store outside web root if possible, otherwise in protected uploads folder
-    $uploadDir = __DIR__ . '/../../uploads/documents/' . $employeeId . '/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+    $projectRoot = dirname(__DIR__, 2);
+    $category = submissionDocumentCategory($documentType);
+    $uploadDir = $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR .
+        'documents' . DIRECTORY_SEPARATOR . $category . DIRECTORY_SEPARATOR . (int) $employeeId;
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+        throw new RuntimeException('Unable to create the document category folder.');
     }
 
-    $filePath = $uploadDir . $secureName;
+    $filePath = submissionDocumentAbsolutePath($projectRoot, (int) $employeeId, $documentType, $secureName);
 
     // Move uploaded file
     if (!move_uploaded_file($file['tmp_name'], $filePath)) {

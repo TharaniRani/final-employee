@@ -2,6 +2,7 @@
 /**
  * Converts the wizard's working state into the compact submission JSON format.
  */
+require_once __DIR__ . '/document-storage.php';
 
 function submissionValue(array $data, string $path, $default = '')
 {
@@ -90,7 +91,7 @@ function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): ar
 
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("
-        SELECT id, stored_name
+        SELECT id, document_type, stored_name
         FROM employee_documents
         WHERE employee_id = ? AND id IN ($placeholders)
     ");
@@ -98,11 +99,22 @@ function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): ar
 
     $paths = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
-        $storedName = (string) $document['stored_name'];
-        if ($storedName === '' || basename($storedName) !== $storedName || str_contains($storedName, '\\')) {
-            throw new DomainException('A stored document path is invalid. Please contact HR.');
+        $relativePath = submissionDocumentRelativePath(
+            $employeeId,
+            (string) $document['document_type'],
+            (string) $document['stored_name']
+        );
+        $legacyPath = submissionLegacyDocumentRelativePath($employeeId, (string) $document['stored_name']);
+        $projectRoot = dirname(__DIR__, 2);
+        if (!is_file(submissionDocumentAbsolutePath(
+            $projectRoot,
+            $employeeId,
+            (string) $document['document_type'],
+            (string) $document['stored_name']
+        )) && is_file($projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $legacyPath))) {
+            $relativePath = $legacyPath;
         }
-        $paths[(string) $document['id']] = 'uploads/documents/' . $employeeId . '/' . $storedName;
+        $paths[(string) $document['id']] = $relativePath;
     }
 
     if (count($paths) !== count($ids)) {

@@ -121,7 +121,7 @@ window.HRMS_ConditionalFields = (function() {
                     teacherStatus(s, 'bed_status') === 'Joined';
             },
             target: '#bed-proposed-year-group',
-            fields: ['bed_proposed_year'],
+            fields: ['is_teacher', 'bed_status', 'bed_proposed_year'],
             clearOnHide: true
         },
         {
@@ -131,7 +131,7 @@ window.HRMS_ConditionalFields = (function() {
                     teacherStatus(s, 'bed_status') === 'Completed';
             },
             target: '#bed-graduation-year-group',
-            fields: ['bed_graduation_year'],
+            fields: ['is_teacher', 'bed_status', 'bed_graduation_year'],
             clearOnHide: true
         },
 

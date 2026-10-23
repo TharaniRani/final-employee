@@ -91,6 +91,7 @@ window.HRMS_Wizard = (function() {
             state.initFromEmployee(employee);
             state.loadDraft(state.getState());
             populateEmployeeFields(employee);
+            syncPermanentLocationFromCurrent();
             displayLegacyDocumentNames(employee.legacy_documents);
             displayLegacyAdditionalDetails(employee);
             employeeDataLoaded = true;
@@ -112,14 +113,14 @@ window.HRMS_Wizard = (function() {
                 conditionalFields.evaluateForStep(currentStep, state.getState());
             }
             employeeDataReady = employeeDataLoaded;
-            if (!restored && employeeDataReady) persistLocalDraft();
+            if (employeeDataReady) persistLocalDraft();
             state.markClean();
         }
     }
 
     function populateEmployeeFields(employee) {
         const fieldMap = {
-            full_name: ['full-name'],
+            full_name: ['full-name', 'aadhaar-name'],
             email: ['email'],
             mobile: ['mobile-number-display'],
             current_address: ['curr-address-line1'],
@@ -132,10 +133,6 @@ window.HRMS_Wizard = (function() {
             permanent_address: ['perm-address-line1'],
             permanent_address_line2: ['perm-address-line2'],
             permanent_address_line3: ['perm-address-line3'],
-            permanent_city: ['perm_city'],
-            permanent_pincode: ['perm_pincode'],
-            permanent_state: ['perm_state'],
-            permanent_country: ['perm_country'],
             same_as_permanent: ['same_as_permanent'],
             date_of_birth: ['date-of-birth'],
             gender: ['gender'],
@@ -400,10 +397,20 @@ window.HRMS_Wizard = (function() {
                 return false;
             }
 
+            const savedExperience = draft.form_data.work_experience;
+            const employeeExperience = state.get('work_experience.entries') || [];
+            if (draft.version !== 2 &&
+                savedExperience?.not_applicable &&
+                (!Array.isArray(savedExperience.entries) || savedExperience.entries.length === 0) &&
+                employeeExperience.length === 0) {
+                savedExperience.not_applicable = false;
+            }
+
             clearLegacyCopiedPermanentLocation(draft.form_data);
             currentStepIndex = draftStepIndex;
             currentStep = stepKeys[currentStepIndex];
             state.loadDraft(mergeDraftWithCurrent(draft.form_data, state.toJSON()));
+            syncPermanentLocationFromCurrent();
             populateFormFromState();
             syncNextOfKinControls();
             showStep(currentStepIndex);
@@ -417,6 +424,29 @@ window.HRMS_Wizard = (function() {
             showToast('error', 'Draft Restore Failed', 'Saved progress could not be restored in this browser.');
             return false;
         }
+    }
+
+    function syncPermanentLocationFromCurrent() {
+        if (state.get('address.same_as_permanent.original_value') !== 'Yes') return;
+
+        ['city', 'pincode', 'state', 'country'].forEach(field => {
+            const value = state.get(`address.current.${field}`);
+            state.set(`address.permanent.${field}`, value);
+
+            const control = document.querySelector(`[name="perm_${field}"]`);
+            if (control) {
+                control.value = value?.original_value || '';
+            }
+
+            const correctedControl = document.querySelector(`[name="perm_${field}_corrected"]`);
+            if (correctedControl) {
+                correctedControl.value = value?.corrected_value || '';
+            }
+
+            document.querySelectorAll(`[name="perm_${field}_verification"]`).forEach(radio => {
+                radio.checked = radio.value === value?.verification;
+            });
+        });
     }
 
     function clearLegacyCopiedPermanentLocation(formData) {
@@ -495,6 +525,7 @@ window.HRMS_Wizard = (function() {
 
         try {
             localStorage.setItem(draftStorageKey, JSON.stringify({
+                version: 2,
                 current_step: currentStep,
                 form_data: state.toJSON(),
                 updated_at: new Date().toISOString()

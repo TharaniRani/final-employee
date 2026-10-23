@@ -279,6 +279,34 @@ window.HRMS_FormState = (function() {
     };
 
     function bindFormInputs() {
+        const syncPermanentLocation = (sameAsCurrent) => {
+            ['city', 'pincode', 'state', 'country'].forEach(field => {
+                const permanentPath = `address.permanent.${field}`;
+                const value = sameAsCurrent
+                    ? window.HRMS_FormState.get(`address.current.${field}`)
+                    : {
+                        original_value: '',
+                        verification: 'pending',
+                        corrected_value: null
+                    };
+                window.HRMS_FormState.set(permanentPath, value);
+
+                const control = document.querySelector(`[name="perm_${field}"]`);
+                if (control) {
+                    control.value = value.original_value || '';
+                }
+
+                const correctedControl = document.querySelector(`[name="perm_${field}_corrected"]`);
+                if (correctedControl) {
+                    correctedControl.value = value.corrected_value || '';
+                }
+
+                document.querySelectorAll(`[name="perm_${field}_verification"]`).forEach(radio => {
+                    radio.checked = radio.value === value.verification;
+                });
+            });
+        };
+
         const syncInput = (event) => {
             const input = event.target;
             if (!(input instanceof HTMLElement) || !('name' in input)) return;
@@ -324,6 +352,15 @@ window.HRMS_FormState = (function() {
                 window.HRMS_FormState.set(path, value);
             } else {
                 window.HRMS_FormState.set(`${path}.original_value`, value);
+            }
+
+            if (mappedName === 'same_as_permanent') {
+                syncPermanentLocation(value === 'Yes');
+            } else if (
+                ['curr_city', 'curr_pincode', 'curr_state', 'curr_country'].includes(mappedName) &&
+                window.HRMS_FormState.get('address.same_as_permanent.original_value') === 'Yes'
+            ) {
+                syncPermanentLocation(true);
             }
         };
 
@@ -654,10 +691,6 @@ window.HRMS_FormState = (function() {
                 permanent_address: 'address.permanent.address_line1',
                 permanent_address_line2: 'address.permanent.address_line2',
                 permanent_address_line3: 'address.permanent.address_line3',
-                permanent_city: 'address.permanent.city',
-                permanent_pincode: 'address.permanent.pincode',
-                permanent_state: 'address.permanent.state',
-                permanent_country: 'address.permanent.country',
                 is_teacher: 'teacher_documents.is_teacher',
                 bed_status: 'teacher_documents.bed_status',
                 bed_institution: 'teacher_documents.bed_institution',
@@ -682,7 +715,7 @@ window.HRMS_FormState = (function() {
                 }
             });
 
-            setOriginal('aadhaar_pan.aadhaar.name', employeeData.aadhaar_name);
+            setOriginal('aadhaar_pan.aadhaar.name', employeeData.aadhaar_name || employeeData.full_name);
             setOriginal('next_of_kin.name_source', employeeData.nok_name_source);
             setOriginal('next_of_kin.selected_name', employeeData.nok_selected_name);
             setOriginal('next_of_kin.manual_name', employeeData.nok_manual_name);
@@ -701,6 +734,14 @@ window.HRMS_FormState = (function() {
             setOriginal('referral.family_working', employeeData.family_working);
             setOriginal('referral.family_studying', employeeData.family_studying);
             this.set('address.same_as_permanent.original_value', employeeData.same_as_permanent || '');
+            if (employeeData.same_as_permanent === 'Yes') {
+                ['city', 'pincode', 'state', 'country'].forEach(field => {
+                    this.set(
+                        `address.permanent.${field}`,
+                        this.get(`address.current.${field}`)
+                    );
+                });
+            }
             if (employeeData.is_alumni !== undefined) {
                 this.set('personal_basic.is_alumni', employeeData.is_alumni || '');
             }
@@ -742,8 +783,6 @@ window.HRMS_FormState = (function() {
                 legacy_experience_letter_name: row.experience_letter_name || '',
                 legacy_pay_slip_name: row.pay_slip_name || ''
             })));
-            this.set('work_experience.not_applicable', (employeeData.work_experience || []).length === 0);
-
             const referralRows = employeeData.referrals || [];
             const workingRows = referralRows.filter(row => String(row.working_name || '').trim() !== '');
             const studyingRows = referralRows.filter(row => String(row.student_name || '').trim() !== '');

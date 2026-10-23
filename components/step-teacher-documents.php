@@ -89,7 +89,7 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                             <label for="bed-proposed-year" class="form-label">Year of Proposed Graduation <span class="required-indicator" aria-hidden="true">*</span></label>
                             <div class="verification-group" id="bed-proposed-year-group-inner">
                                 <span class="verification-value" id="bed-proposed-year-display"></span>
-                                <input type="number" class="form-input" id="bed-proposed-year" name="bed_proposed_year" placeholder="YYYY" min="<?php echo date('Y'); ?>" max="<?php echo date('Y') + 10; ?>" step="1" required aria-describedby="bed-proposed-year-help">
+                                <input type="text" class="form-input" id="bed-proposed-year" name="bed_proposed_year" placeholder="YYYY" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" required aria-describedby="bed-proposed-year-help">
                                 <div class="form-help" id="bed-proposed-year-help">Expected year of graduation (if B.Ed status is Joined)</div>
                                 <div class="form-error" id="bed-proposed-year-error" role="alert"></div>
                             </div>
@@ -99,7 +99,7 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                             <label for="bed-graduation-year" class="form-label">Year of Graduation <span class="required-indicator" aria-hidden="true">*</span></label>
                             <div class="verification-group" id="bed-graduation-year-group-inner">
                                 <span class="verification-value" id="bed-graduation-year-display"></span>
-                                <input type="number" class="form-input" id="bed-graduation-year" name="bed_graduation_year" placeholder="YYYY" min="1950" max="<?php echo date('Y'); ?>" step="1" required aria-describedby="bed-graduation-year-help">
+                                <input type="text" class="form-input" id="bed-graduation-year" name="bed_graduation_year" placeholder="YYYY" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" required aria-describedby="bed-graduation-year-help">
                                 <div class="form-help" id="bed-graduation-year-help">Year of graduation (if B.Ed status is Completed)</div>
                                 <div class="form-error" id="bed-graduation-year-error" role="alert"></div>
                             </div>

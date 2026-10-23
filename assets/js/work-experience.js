@@ -63,11 +63,18 @@ window.HRMS_WorkExperience = (function() {
     }
 
     function toggleExperienceSection(isNA) {
+        isNA = Boolean(isNA);
+        if (naCheckbox) {
+            naCheckbox.checked = isNA;
+        }
+
         const section = document.getElementById('experience-details-section');
         if (section) {
             section.style.display = isNA ? 'none' : 'block';
         }
-        addBtn.style.display = isNA ? 'none' : 'inline-flex';
+        if (addBtn) {
+            addBtn.style.display = isNA ? 'none' : 'inline-flex';
+        }
     }
 
     function addExperienceEntry() {

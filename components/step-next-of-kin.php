@@ -110,7 +110,7 @@ $stepIndex = $stepData['stepIndex'] ?? 4;
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="nok-address-line1" class="form-label">Address Line 1 <span class="required-indicator" aria-hidden="true">*</span></label>
+                    <label for="nok-address-line1" class="form-label">Address Line 1 (as per Aadhaar) <span class="required-indicator" aria-hidden="true">*</span></label>
                     <div class="verification-group" id="nok-address-line1-group">
                         <span class="verification-value" id="nok-address-line1-display"></span>
                         <input type="text" class="form-input" id="nok-address-line1" name="nok_address_line1" placeholder="House/Flat No., Building, Street" autocomplete="address-line1" required aria-describedby="nok-address-line1-help">
@@ -128,7 +128,7 @@ $stepIndex = $stepData['stepIndex'] ?? 4;
                 </div>
 
                 <div class="form-group">
-                    <label for="nok-address-line2" class="form-label">Address Line 2</label>
+                    <label for="nok-address-line2" class="form-label">Address Line 2 (as per Aadhaar)</label>
                     <div class="verification-group" id="nok-address-line2-group">
                         <span class="verification-value" id="nok-address-line2-display"></span>
                         <input type="text" class="form-input" id="nok-address-line2" name="nok_address_line2" placeholder="Area/Locality/Sector" autocomplete="address-line2" aria-describedby="nok-address-line2-help">
@@ -148,7 +148,7 @@ $stepIndex = $stepData['stepIndex'] ?? 4;
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="nok-address-line3" class="form-label">Address Line 3</label>
+                    <label for="nok-address-line3" class="form-label">Address Line 3 (as per Aadhaar)</label>
                     <div class="verification-group" id="nok-address-line3-group">
                         <span class="verification-value" id="nok-address-line3-display"></span>
                         <input type="text" class="form-input" id="nok-address-line3" name="nok_address_line3" placeholder="Landmark/Nearby reference" autocomplete="address-line3" aria-describedby="nok-address-line3-help">

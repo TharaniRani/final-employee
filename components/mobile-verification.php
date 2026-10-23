@@ -25,7 +25,7 @@
 
             <div class="d-grid gap-2 mt-4">
                 <button type="submit" class="btn btn-primary btn-lg" id="verify-mobile-btn">
-                    <span class="btn-text">Send OTP</span>
+                    <span class="btn-text">Verify Mobile Number</span>
                     <span class="btn-loading" style="display: none;">
                         <span class="spinner spinner-sm me-2" aria-hidden="true"></span>
                         Sending OTP...
@@ -66,7 +66,10 @@
 
         <div class="resend-timer text-center mt-4">
             <p class="mb-2">Didn't receive the OTP?</p>
-            <button type="button" class="resend-link" id="resend-otp-btn" disabled>Resend OTP (60s)</button>
+            <button type="button" class="resend-link" id="resend-otp-btn" disabled>
+                <span id="resend-otp-label">Resend OTP</span>
+                <span id="resend-countdown-group">(<span id="resend-countdown">60</span>s)</span>
+            </button>
         </div>
 
         <div class="text-center mt-3">
@@ -112,6 +115,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const verifyMobileBtn = document.getElementById('verify-mobile-btn');
     const verifyOtpBtn = document.getElementById('verify-otp-btn');
     const resendOtpBtn = document.getElementById('resend-otp-btn');
+    const resendOtpLabel = document.getElementById('resend-otp-label');
+    const resendCountdown = document.getElementById('resend-countdown');
+    const resendCountdownGroup = document.getElementById('resend-countdown-group');
     const backToMobileBtn = document.getElementById('back-to-mobile');
     const mobileStep = document.getElementById('mobile-step');
     const otpStep = document.getElementById('otp-step');
@@ -164,7 +170,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (resendTimer) clearInterval(resendTimer);
         countdown = 60;
         resendOtpBtn.disabled = true;
-        resendOtpBtn.textContent = `Resend OTP (${countdown}s)`;
+        resendOtpLabel.textContent = 'Resend OTP';
+        resendCountdownGroup.hidden = false;
+        resendCountdown.textContent = String(countdown);
 
         resendTimer = setInterval(() => {
             countdown--;
@@ -172,9 +180,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 clearInterval(resendTimer);
                 resendTimer = null;
                 resendOtpBtn.disabled = false;
-                resendOtpBtn.textContent = 'Resend OTP';
+                resendCountdownGroup.hidden = true;
             } else {
-                resendOtpBtn.textContent = `Resend OTP (${countdown}s)`;
+                resendCountdown.textContent = String(countdown);
             }
         }, 1000);
     }
@@ -351,7 +359,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const mobile = mobileInput.value.trim();
         this.disabled = true;
-        this.textContent = 'Sending...';
+        resendOtpLabel.textContent = 'Sending...';
+        resendCountdownGroup.hidden = true;
 
         try {
             const response = await window.HRMS_API.verifyMobile(mobile);
@@ -371,12 +380,12 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 showError(otpError, response.message || 'Failed to resend OTP');
                 this.disabled = false;
-                this.textContent = 'Resend OTP';
+                resendOtpLabel.textContent = 'Resend OTP';
             }
         } catch (error) {
             showError(otpError, error.message || 'Unable to resend the OTP. Please try again.');
             this.disabled = false;
-            this.textContent = 'Resend OTP';
+            resendOtpLabel.textContent = 'Resend OTP';
         }
     });
 

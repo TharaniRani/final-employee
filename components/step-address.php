@@ -182,7 +182,7 @@ $stepIndex = $stepData['stepIndex'] ?? 1;
 
                 <div class="form-row-3">
                     <div class="form-group">
-                        <label for="perm-address-line1" class="form-label">Address Line 1 <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <label for="perm-address-line1" class="form-label">Address Line 1 (as per Aadhaar) <span class="required-indicator" aria-hidden="true">*</span></label>
                         <div class="verification-group" id="perm-address-line1-group">
                             <span class="verification-value" id="perm-address-line1-display"></span>
                             <input type="text" class="form-input" id="perm-address-line1" name="perm_address_line1" placeholder="House/Flat No., Building, Street as per Aadhaar" autocomplete="address-line1" required aria-describedby="perm-address-line1-help">
@@ -200,7 +200,7 @@ $stepIndex = $stepData['stepIndex'] ?? 1;
                     </div>
 
                     <div class="form-group">
-                        <label for="perm-address-line2" class="form-label">Address Line 2</label>
+                        <label for="perm-address-line2" class="form-label">Address Line 2 (as per Aadhaar)</label>
                         <div class="verification-group" id="perm-address-line2-group">
                             <span class="verification-value" id="perm-address-line2-display"></span>
                             <input type="text" class="form-input" id="perm-address-line2" name="perm_address_line2" placeholder="Area/Locality/Sector as per Aadhaar" autocomplete="address-line2" aria-describedby="perm-address-line2-help">
@@ -218,7 +218,7 @@ $stepIndex = $stepData['stepIndex'] ?? 1;
                     </div>
 
                     <div class="form-group">
-                        <label for="perm-address-line3" class="form-label">Address Line 3</label>
+                        <label for="perm-address-line3" class="form-label">Address Line 3 (as per Aadhaar)</label>
                         <div class="verification-group" id="perm-address-line3-group">
                             <span class="verification-value" id="perm-address-line3-display"></span>
                             <input type="text" class="form-input" id="perm-address-line3" name="perm_address_line3" placeholder="Landmark/Nearby reference as per Aadhaar" autocomplete="address-line3" aria-describedby="perm-address-line3-help">

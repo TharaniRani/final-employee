@@ -120,7 +120,24 @@ try {
         $submissionId = (int) $pdo->lastInsertId();
     }
 
-    stageSubmissionRows($pdo, $employeeId, $submissionId, $submissionData);
+    $changedFields = stageSubmissionRows($pdo, $employeeId, $submissionId, $submissionData);
+
+    $submissionData['submission']['changed_fields'] = $changedFields;
+    $submissionData['submission']['original_values'] = submissionOriginalValueSnapshots(
+        $pdo,
+        $employeeId,
+        $changedFields
+    );
+    $stmt = $pdo->prepare("
+        UPDATE employee_form_submissions
+        SET form_data = ?, updated_at = NOW()
+        WHERE id = ? AND employee_id = ? AND status = 'pending'
+    ");
+    $stmt->execute([
+        json_encode($submissionData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        $submissionId,
+        $employeeId
+    ]);
 
     $stmt = $pdo->prepare("
         INSERT INTO form_submission_logs

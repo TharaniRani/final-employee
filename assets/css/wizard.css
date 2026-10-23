@@ -1059,3 +1059,7 @@
   background-color: var(--color-primary);
   color: var(--color-text-on-primary);
 }
+
+.employment-change-group {
+  margin-top: var(--spacing-4);
+}

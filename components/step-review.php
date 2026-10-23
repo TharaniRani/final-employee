@@ -28,7 +28,7 @@ $stepIndex = $stepData['stepIndex'] ?? 10;
                             <span>I hereby declare that all the information provided in this form is true, complete, and accurate to the best of my knowledge. I understand that any false information may lead to disciplinary action.</span>
                         </label>
                     </div>
-                    <div class="form-error" id="declaration-error" role="alert"></div>
+                    <div class="form-error" id="declaration-checkbox-error" role="alert"></div>
                 </fieldset>
             </div>
 
@@ -41,7 +41,7 @@ $stepIndex = $stepData['stepIndex'] ?? 10;
                             <span>I have read and agree to the <button type="button" class="btn btn-ghost btn-sm p-0 terms-link" id="terms-link" aria-label="View Terms and Conditions">Terms and Conditions</button>.</span>
                         </label>
                     </div>
-                    <div class="form-error" id="terms-error" role="alert"></div>
+                    <div class="form-error" id="terms-checkbox-error" role="alert"></div>
                 </fieldset>
             </div>
 

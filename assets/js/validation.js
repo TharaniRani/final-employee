@@ -169,11 +169,12 @@ window.HRMS_Validation = (function() {
         'education.*.year_of_completion': {
             required: true,
             custom: (value) => {
-                const year = parseInt(value);
+                if (!/^\d{4}$/.test(String(value))) return false;
+                const year = Number(value);
                 const currentYear = new Date().getFullYear();
                 return !isNaN(year) && year >= 1950 && year <= currentYear;
             },
-            message: 'Enter valid year of completion'
+            message: 'Enter valid 4-digit year of completion'
         },
         'education.*.certificate_file_id': { required: true, message: 'Upload certificate' },
         'education.*.skilled_in': {
@@ -201,7 +202,8 @@ window.HRMS_Validation = (function() {
                     teacherStatus(state, 'bed_status') === 'Joined';
             },
             custom: (value) => {
-                const year = parseInt(value);
+                if (!/^\d{4}$/.test(String(value))) return false;
+                const year = Number(value);
                 const currentYear = new Date().getFullYear();
                 return !isNaN(year) && year >= currentYear && year <= currentYear + 10;
             },
@@ -213,7 +215,8 @@ window.HRMS_Validation = (function() {
                     teacherStatus(state, 'bed_status') === 'Completed';
             },
             custom: (value) => {
-                const year = parseInt(value);
+                if (!/^\d{4}$/.test(String(value))) return false;
+                const year = Number(value);
                 const currentYear = new Date().getFullYear();
                 return !isNaN(year) && year >= 1950 && year <= currentYear;
             },
@@ -578,14 +581,22 @@ window.HRMS_Validation = (function() {
 
         if (stepName === 'work-experience') {
             if (!state.work_experience?.not_applicable) {
-                const expErrors = validateArrayItems('work_experience.entries', {
-                    company: rules['experience_entries.*.company'],
-                    designation: rules['experience_entries.*.designation'],
-                    start_month: rules['experience_entries.*.start_month'],
-                    end_month: rules['experience_entries.*.end_month'],
-                    details: rules['experience_entries.*.details']
-                }, state);
-                errors.push(...expErrors);
+                const entries = state.work_experience?.entries;
+                if (!Array.isArray(entries) || entries.length === 0) {
+                    errors.push({
+                        path: 'experience_not_applicable',
+                        message: 'Select Not Applicable or add at least one work experience entry'
+                    });
+                } else {
+                    const expErrors = validateArrayItems('work_experience.entries', {
+                        company: rules['experience_entries.*.company'],
+                        designation: rules['experience_entries.*.designation'],
+                        start_month: rules['experience_entries.*.start_month'],
+                        end_month: rules['experience_entries.*.end_month'],
+                        details: rules['experience_entries.*.details']
+                    }, state);
+                    errors.push(...expErrors);
+                }
             }
         }
 
@@ -647,7 +658,10 @@ window.HRMS_Validation = (function() {
             is_alumni: 'alumni',
             resume_file_id: 'resume',
             nok_emergency_contact: 'emergency-contact',
-            education: 'education'
+            education: 'education',
+            declaration: 'declaration-checkbox',
+            terms_accepted: 'terms-checkbox',
+            experience_not_applicable: 'experience-na'
         };
 
         errors.forEach(error => {

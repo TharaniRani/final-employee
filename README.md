@@ -135,12 +135,17 @@ HRMS-form/
    attempts, enforce a 60-second resend cooldown, and limit requests to three
    per 15-minute window.
 
-   Complete form responses are stored as JSON in
-   `employee_form_submissions`; versioned snapshots are also appended to the
-   existing `temp_*` tables and linked by `submission_id`. All pre-existing
-   temporary rows remain unlinked baseline rows. A final submission is marked
-   `pending`; it does not update finalized HRMS employee records. Uploaded-file
-   metadata is stored in `employee_documents`. New submissions are stored using
+   Employee data is loaded from the finalized `employees`, `employee_contact`,
+   `employee_employment`, `employee_identification`, education, experience, and
+   referral tables after mobile verification. Employees can mark incorrect
+   values and provide corrections in the existing form. Complete form responses
+   are stored as JSON in `employee_form_submissions`; only changed scalar values
+   are written to their matching existing `temp_*` tables and linked by
+   `submission_id`. A repeatable section is staged only when that section differs
+   from the finalized records. All pre-existing temporary rows remain unlinked
+   baseline rows. A final submission is marked `pending`; it does not update
+   finalized HRMS employee records. Uploaded-file metadata is stored in
+   `employee_documents`. New submissions are stored using
    the compact JSON structure produced by
    `backend-integration/config/submission-serializer.php`; document references
    in that JSON are employee-owned relative paths such as
@@ -157,31 +162,58 @@ HRMS-form/
    unless production HTTPS, access controls, and an organization-approved
    authentication method are configured.
 
-   HR approval applies only the selected scalar fields to their original
-   employee rows and records approval status, selected fields, reviewer, and
-   timestamps in `employee_form_submissions` and `form_submission_logs` in the
-   same database transaction. Rejection records the reviewer and reason without
-   changing original employee rows. The three repeatable sections can be
-   explicitly selected for replacement; approval replaces all existing rows
-   for that employee in that section with the reviewed submission version.
+   The HR dashboard searches by employee ID, employee name, mobile number, or
+   submission ID and filters by request status and the employee's current unit.
+   Its request cards use employee and employment data from the finalized tables.
+   Opening a request shows only fields or repeatable sections recorded as changed,
+   in a compact table with original and requested values; the full submission JSON
+   is not displayed. Original values are snapshotted in the existing submission
+   JSON metadata at submit time so approved request history remains comparable;
+   no new table is needed. HR reviews changed fields one category at a time and
+   can approve or reject a single field or selected fields. Each decision is
+   saved in the existing submission JSON and logged to `form_submission_logs`;
+   approved values are applied to the original employee rows in the same
+   transaction, while rejected values never change those rows. A request stays
+   pending until every changed field is reviewed, then receives its final
+   approved or rejected status. HR can reject the entire request before any
+   fields have been approved. A changed repeatable section is one selectable
+   change; approving it replaces all existing rows for that employee in that
+   section with the reviewed submission version. For older pending requests
+   without changed-field metadata, the review API snapshots the original values
+   before the first stepwise decision and then preserves the differences.
 
    To enable append-only submission staging on an existing database, apply
    `backend-integration/config/migrations/001-add-submission-version-linkage.sql`
-   once. It adds `submission_id` linkage to the existing temporary tables and
-   changes the `temp_employees` row key to support multiple versions without
-   replacing baseline records. HR approve/reject endpoints are intentionally
+   once, then apply
+   `backend-integration/config/migrations/002-allow-sparse-submission-staging.sql`
+   once. The first migration adds `submission_id` linkage to the existing
+   temporary tables and changes the `temp_employees` row key to support multiple
+   versions without replacing baseline records. The second allows unchanged
+   scalar columns to remain `NULL`; submission staging inserts only changed
+   scalar values plus the employee/submission linkage and audit metadata.
+   Repeatable sections remain staged as a complete section snapshot when that
+   section itself changed, because approval replaces that section as a unit.
+   Uploaded documents are stored under the existing `uploads/documents/` root,
+   grouped by document category and then employee ID (for example,
+   `uploads/documents/aadhar/8/` and `uploads/documents/pan/8/`). Existing
+   documents in the previous employee-ID-only folders remain readable.
+   HR approve/reject endpoints are intentionally
    protected by the existing HR login session. The HR application must set
    `$_SESSION['user_role']` to `HR`, `$_SESSION['hr_user_id']` to a numeric
    reviewer ID, and `$_SESSION['hr_user_name']` to the reviewer display name.
    Use `GET /backend-integration/api/review-submission.php?limit=50` with the
    session CSRF token to list pending submissions, then `POST` JSON to that
-   endpoint with `submission_id`, `decision`, and (for approval)
-   `approved_fields`. A rejection also requires `rejection_reason`. For example:
+   endpoint with `submission_id` and a decision. Stepwise approval uses
+   `decision: "approve_fields"` with an `approved_fields` array; rejecting
+   selected changes uses `decision: "reject_fields"` with a `rejected_fields`
+   array and `rejection_reason`. Whole-request rejection uses
+   `decision: "reject"` and `rejection_reason`. The existing `approve` decision
+   remains supported for completing a request in one operation. For example:
 
    ```json
    {
      "submission_id": 123,
-     "decision": "approve",
+     "decision": "approve_fields",
      "approved_fields": ["employee_contact.personal_email"],
      "review_notes": "Verified"
    }
@@ -191,8 +223,10 @@ HRMS-form/
    Repeatable sections can be approved as `employee_referrals.all`,
    `educational_qualifications.all`, or `employee_previous_experience.all`;
    approving one replaces that section's original rows with the submitted
-   version. Rejection records the reason and reviewer but never changes original
-   employee tables. No HR login page is included in this employee-facing project;
+   version. Field-level decisions are retained in the submission metadata, so
+   already-reviewed fields cannot be applied or rejected again. Rejection
+   records the reason and reviewer but never changes original employee tables.
+   No HR login page is included in this employee-facing project;
    the endpoint depends on the organization's existing authenticated HR session.
 
    In-progress form values are saved as browser-local JSON scoped to the

@@ -138,8 +138,8 @@ $stepIndex = $stepData['stepIndex'] ?? 6;
 
                 <div class="form-group">
                     <label class="form-label">Year of Completion <span class="required-indicator" aria-hidden="true">*</span></label>
-                    <input type="number" class="form-input" name="education_year[]" placeholder="YYYY" min="1950" max="<?php echo date('Y'); ?>" step="1" required aria-describedby="year-help">
-                    <div class="form-help" id="year-help">Year of completion (e.g., 2020)</div>
+                    <input type="text" class="form-input" name="education_year[]" placeholder="YYYY" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" required aria-describedby="year-help">
+                    <div class="form-help" id="year-help">Year of completion (4 digits, e.g., 2020)</div>
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>

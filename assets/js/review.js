@@ -12,8 +12,6 @@ window.HRMS_Review = (function() {
 
     const reviewContainer = document.getElementById('review-summary');
     const submitBtn = document.getElementById('review-submit');
-    const validationSummary = document.getElementById('validation-summary');
-    const validationErrorList = document.getElementById('validation-error-list');
     const successScreen = document.getElementById('step-success');
     const downloadBtn = document.getElementById('download-acknowledgement');
     const newFormBtn = document.getElementById('start-new-form');
@@ -842,10 +840,25 @@ window.HRMS_Review = (function() {
         const errors = validation.validateAll(state.getState());
 
         if (errors.length > 0) {
-            showValidationErrors(errors);
-            // Scroll to first error
-            const firstError = document.querySelector('.form-error[style*="block"], .form-input.error, .form-select.error, .form-textarea.error');
-            if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            validation.showErrors(errors);
+            const firstError = errors[0];
+            const firstErrorStep = getStepForValidationPath(firstError.path);
+            if (firstErrorStep) {
+                window.HRMS_Wizard?.goToStep(firstErrorStep);
+                const step = document.getElementById(`step-${firstErrorStep}`);
+                const invalidControl = step?.querySelector(
+                    '.form-input.error, .form-select.error, .form-textarea.error, [aria-invalid="true"]'
+                );
+                if (invalidControl) {
+                    invalidControl.focus({ preventScroll: true });
+                    invalidControl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+            window.HRMS_Wizard?.showToast(
+                'error',
+                'Form Not Ready to Submit',
+                `${errors.length} required item(s) need attention. We opened the first step with an issue.`
+            );
             return;
         }
 
@@ -956,33 +969,25 @@ window.HRMS_Review = (function() {
         });
     }
 
-    function showValidationErrors(errors) {
-        validationSummary.style.display = 'flex';
-        validationErrorList.innerHTML = '';
+    function getStepForValidationPath(path) {
+        const field = String(path).split('[')[0];
+        const statePath = state.getFieldStatePath(field) || field;
+        const stateRoot = statePath.split('.')[0];
+        const stepByStateRoot = {
+            personal_basic: 'personal-basic',
+            address: 'address',
+            aadhaar_pan: 'aadhaar-pan',
+            personal_details: 'personal-details',
+            next_of_kin: 'next-of-kin',
+            referral: 'referral',
+            education: 'education',
+            teacher_documents: 'teacher-documents',
+            work_experience: 'work-experience',
+            employment_details: 'employment-details',
+            submission: 'review'
+        };
 
-        // Group errors by section
-        const errorsBySection = {};
-        errors.forEach(error => {
-            const section = error.path.split('.')[0];
-            if (!errorsBySection[section]) errorsBySection[section] = [];
-            errorsBySection[section].push(error);
-        });
-
-        Object.entries(errorsBySection).forEach(([section, sectionErrors]) => {
-            const sectionTitle = document.createElement('li');
-            sectionTitle.style.fontWeight = '600';
-            sectionTitle.style.marginTop = '0.5rem';
-            sectionTitle.textContent = section.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            validationErrorList.appendChild(sectionTitle);
-
-            sectionErrors.forEach(error => {
-                const li = document.createElement('li');
-                li.textContent = error.message;
-                validationErrorList.appendChild(li);
-            });
-        });
-
-        validationSummary.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return stepByStateRoot[stateRoot] || null;
     }
 
     function showSuccessScreen(result) {

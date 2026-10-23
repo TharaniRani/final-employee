@@ -1097,9 +1097,8 @@
 
 /* Terms Modal Content */
 .terms-content {
-  max-height: 60vh;
-  overflow-y: auto;
   padding-right: var(--spacing-2);
+  padding-bottom: var(--spacing-4);
 }
 
 .terms-section h5 {
