@@ -80,9 +80,10 @@ function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
             (SELECT i.pg_degree_status FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_status,
             (SELECT i.pg_degree_institution FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_institution,
             (SELECT r.referred_by FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referred_by,
-            (SELECT r.referral_source FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referral_source,
+            // (SELECT r.referral_source FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referral_source,
             (SELECT r.family_members_working FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_working,
             (SELECT r.family_members_studying FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_studying,
+            (SELECT r.working_tmss_id FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_tmss_id), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_tmss_id,
             (SELECT r.working_name FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_name), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_name,
             (SELECT r.working_unit FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(r.working_name, '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_unit,
             (SELECT r.working_designation FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_name), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_designation,
@@ -95,10 +96,7 @@ function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
             (SELECT NULLIF(TRIM(em.employee_type), '') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_employee_type,
             (SELECT NULLIF(TRIM(em.job_type), '') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_job_type,
             (SELECT NULLIF(TRIM(em.reporting_to), '') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_reporting_to,
-            (SELECT NULLIF(em.date_of_joining, '0000-00-00') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_date_of_joining,
-            (SELECT NULLIF(TRIM(em.probation_period), '') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_probation_period,
-            (SELECT NULLIF(em.probation_start_date, '0000-00-00') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_probation_start_date,
-            (SELECT NULLIF(em.probation_end_date, '0000-00-00') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_probation_end_date
+            (SELECT NULLIF(em.date_of_joining, '0000-00-00') FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1) AS employment_date_of_joining
         FROM employees e
         WHERE e.employee_id = ?
         LIMIT 1
@@ -228,8 +226,8 @@ function getHrmsExperienceRows(PDO $pdo, int $employeeId): array
 function getHrmsReferralRows(PDO $pdo, int $employeeId): array
 {
     $stmt = $pdo->prepare("
-        SELECT referral_id, referral_source, referred_by, family_members_working,
-               working_name, working_unit, working_designation,
+        SELECT referral_id, // referral_source, referred_by, family_members_working,
+               working_tmss_id, working_name, working_unit, working_designation,
                family_members_studying, student_name, student_unit, student_class
         FROM employee_referrals
         WHERE employee_id = ?

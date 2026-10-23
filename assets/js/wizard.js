@@ -161,7 +161,7 @@ window.HRMS_Wizard = (function() {
             nok_state: ['nok_state'],
             nok_country: ['nok_country'],
             referred_by: ['referred_by_name'],
-            referral_source: ['referral_source'],
+            // referral_source: ['referral_source'],
             family_working: ['family_working'],
             family_studying: ['family_studying'],
             is_teacher: ['is_teacher'],
@@ -175,10 +175,7 @@ window.HRMS_Wizard = (function() {
             employment_employee_type: ['employment_employee_type'],
             employment_job_type: ['employment_job_type'],
             employment_reporting_to: ['employment_reporting_to'],
-            employment_date_of_joining: ['employment_date_of_joining'],
-            employment_probation_period: ['employment_probation_period'],
-            employment_probation_start_date: ['employment_probation_start_date'],
-            employment_probation_end_date: ['employment_probation_end_date']
+            employment_date_of_joining: ['employment_date_of_joining']
         };
 
         Object.entries(fieldMap).forEach(([employeeField, controlNames]) => {

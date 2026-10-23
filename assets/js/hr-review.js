@@ -27,8 +27,7 @@
         'employee_employment.branch', 'employee_employment.designation',
         'employee_employment.employee_type', 'employee_employment.job_type',
         'employee_employment.reporting_to', 'employee_employment.date_of_joining',
-        'employee_employment.probation_period', 'employee_employment.probation_start_date',
-        'employee_employment.probation_end_date', 'employee_referrals.all',
+        'employee_referrals.all',
         'educational_qualifications.all', 'employee_previous_experience.all'
     ];
 
@@ -59,9 +58,6 @@
         'employee_employment.employee_type': 'Employee type',
         'employee_employment.job_type': 'Job type',
         'employee_employment.reporting_to': 'Reporting to',
-        'employee_employment.probation_period': 'Probation period',
-        'employee_employment.probation_start_date': 'Probation start date',
-        'employee_employment.probation_end_date': 'Probation end date',
         'employee_referrals.all': 'Referral details',
         'educational_qualifications.all': 'Educational qualifications',
         'employee_previous_experience.all': 'Previous work experience'
@@ -83,7 +79,7 @@
         'employee_previous_experience.all'
     ]);
     const collectionColumnLabels = {
-        referral_source: 'Referral source',
+        // referral_source: 'Referral source',
         referred_by: 'Referred by',
         family_members_working: 'Family members working',
         working_name: 'Working family member',

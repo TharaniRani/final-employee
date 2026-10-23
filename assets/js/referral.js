@@ -173,6 +173,12 @@ window.HRMS_Referral = (function() {
     }
 
     function populateFamilyWorkingFields(item, entry, index) {
+        const tmssIdInput = item.querySelector('input[name="family_working_tmss_id[]"]');
+        if (tmssIdInput) {
+            tmssIdInput.value = entry.tmss_id?.original_value || '';
+            tmssIdInput.dataset.index = index;
+        }
+
         const nameInput = item.querySelector('input[name="family_working_name[]"]');
         if (nameInput) {
             nameInput.value = entry.name?.original_value || '';
@@ -200,9 +206,10 @@ window.HRMS_Referral = (function() {
         const index = Array.from(fwContainer.children).findIndex(el => el.dataset.id === entry.id);
 
         const fieldMappings = [
+            { selector: 'input[name="family_working_tmss_id[]"]', path: 'tmss_id' },
             { selector: 'input[name="family_working_name[]"]', path: 'name' },
-            { selector: 'select[name="family_working_unit[]"]', path: 'unit' },
-            { selector: 'input[name="family_working_designation[]"]', path: 'designation' }
+            { selector: 'select[name="family_working_unit[]"]', path: 'unit' }
+            // { selector: 'input[name="family_working_designation[]"]', path: 'designation' }
         ];
 
         fieldMappings.forEach(({ selector, path }) => {

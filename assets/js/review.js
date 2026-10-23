@@ -149,9 +149,9 @@ window.HRMS_Review = (function() {
                 icon: 'people',
                 fields: [
                     { key: 'referral.referred_by_name', label: 'Referred By', type: 'verification' },
-                    { key: 'referral.referral_source', label: 'Referral Source', type: 'simple' },
+                    // { key: 'referral.referral_source', label: 'Referral Source', type: 'simple' },
                     { key: 'referral.family_working', label: 'Family Members Working', type: 'simple' },
-                    { key: 'referral.family_working_details', label: 'Family Working Details', type: 'array', itemFields: ['name', 'unit', 'designation'], condition: (s) => s.referral?.family_working === 'Yes' },
+                    { key: 'referral.family_working_details', label: 'Family Working Details', type: 'array', itemFields: ['tmss_id', 'name', 'unit'], condition: (s) => s.referral?.family_working === 'Yes' },
                     { key: 'referral.family_studying', label: 'Family Members Studying', type: 'simple' },
                     { key: 'referral.family_studying_details', label: 'Family Studying Details', type: 'array', itemFields: ['name', 'school', 'class'], condition: (s) => s.referral?.family_studying === 'Yes' }
                 ]
@@ -200,10 +200,7 @@ window.HRMS_Review = (function() {
                     { key: 'employment_details.employee_type', label: 'Employee Type (Grade)', type: 'employment' },
                     { key: 'employment_details.job_type', label: 'Job Type', type: 'employment' },
                     { key: 'employment_details.reporting_to', label: 'Reporting To', type: 'employment' },
-                    { key: 'employment_details.date_of_joining', label: 'Date of Joining', type: 'employment' },
-                    { key: 'employment_details.probation_period', label: 'Probation Period', type: 'employment' },
-                    { key: 'employment_details.probation_start_date', label: 'Probation Start Date', type: 'employment' },
-                    { key: 'employment_details.probation_end_date', label: 'Probation End Date', type: 'employment' }
+                    { key: 'employment_details.date_of_joining', label: 'Date of Joining', type: 'employment' }
                 ]
             }
         ];

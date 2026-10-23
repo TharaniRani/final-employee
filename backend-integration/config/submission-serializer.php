@@ -168,6 +168,7 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
             continue;
         }
         $familyMembers[] = [
+            'tmss_id' => submissionValue($member, 'tmss_id'),
             'name' => submissionValue($member, 'name'),
             'unit' => submissionValue($member, 'unit'),
             'designation' => submissionValue($member, 'designation')
@@ -316,7 +317,7 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
         'referral' => [
             'referred_by' => [
                 'name' => submissionValue($data, 'referral.referred_by_name'),
-                'source' => submissionValue($data, 'referral.referral_source')
+                // 'source' => submissionValue($data, 'referral.referral_source')
             ],
             'family_members_working' => submissionValue($data, 'referral.family_working'),
             'family_members' => $familyMembers,
@@ -351,10 +352,7 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
             'employee_type' => employmentSubmissionValue($data, 'employee_type'),
             'job_type' => employmentSubmissionValue($data, 'job_type'),
             'reporting_to' => employmentSubmissionValue($data, 'reporting_to'),
-            'date_of_joining' => employmentSubmissionValue($data, 'date_of_joining'),
-            'probation_period' => employmentSubmissionValue($data, 'probation_period'),
-            'probation_start_date' => employmentSubmissionValue($data, 'probation_start_date'),
-            'probation_end_date' => employmentSubmissionValue($data, 'probation_end_date')
+            'date_of_joining' => employmentSubmissionValue($data, 'date_of_joining')
         ],
         'submission' => [
             'status' => 'pending',

@@ -11,10 +11,7 @@ $employmentFields = [
     ['employee_type', 'Employee Type (Grade)', 'select'],
     ['job_type', 'Job Type', 'select'],
     ['reporting_to', 'Reporting To', 'select'],
-    ['date_of_joining', 'Date of Joining', 'date'],
-    ['probation_period', 'Probation Period', 'select'],
-    ['probation_start_date', 'Probation Start Date', 'date'],
-    ['probation_end_date', 'Probation End Date', 'date']
+    ['date_of_joining', 'Date of Joining', 'date']
 ];
 $renderEmploymentField = static function (array $field): string {
     [$key, $label, $type] = $field;

@@ -319,15 +319,18 @@ function validateFormData($data) {
         }
         foreach ($familyWorkingDetails as $index => $member) {
             $member = is_array($member) ? $member : [];
+            if (empty($member['tmss_id']['original_value'])) {
+                $errors[] = ['field' => "referral.family_working_details[$index].tmss_id", 'message' => "Family member $index TMSS Employee ID is required"];
+            }
             if (empty($member['name']['original_value'])) {
                 $errors[] = ['field' => "referral.family_working_details[$index].name", 'message' => "Family member $index name is required"];
             }
             if (empty($member['unit']['original_value'])) {
                 $errors[] = ['field' => "referral.family_working_details[$index].unit", 'message' => "Family member $index unit is required"];
             }
-            if (empty($member['designation']['original_value'])) {
-                $errors[] = ['field' => "referral.family_working_details[$index].designation", 'message' => "Family member $index designation is required"];
-            }
+            // if (empty($member['designation']['original_value'])) {
+            //     $errors[] = ['field' => "referral.family_working_details[$index].designation", 'message' => "Family member $index designation is required"];
+            // }
         }
     }
     $familyStudyingStatus = submissionValue($data, 'referral.family_studying');
@@ -443,10 +446,7 @@ function validateFormData($data) {
         'employee_type' => 'Employee type',
         'job_type' => 'Job type',
         'reporting_to' => 'Reporting To',
-        'date_of_joining' => 'Date of joining',
-        'probation_period' => 'Probation period',
-        'probation_start_date' => 'Probation start date',
-        'probation_end_date' => 'Probation end date'
+        'date_of_joining' => 'Date of joining'
     ];
     foreach ($employmentFields as $field => $label) {
         $change = $data['employment_details'][$field]['change'] ?? '';
@@ -464,7 +464,7 @@ function validateFormData($data) {
                 'field' => 'employment_details.' . $field,
                 'message' => $label . ' is required'
             ];
-        } elseif (in_array($field, ['date_of_joining', 'probation_start_date', 'probation_end_date'], true) &&
+        } elseif (in_array($field, ['date_of_joining'], true) &&
             !isValidFormDate($value)) {
             $errors[] = [
                 'field' => 'employment_details.' . $field,
@@ -472,15 +472,6 @@ function validateFormData($data) {
             ];
         }
     }
-    $probationStart = employmentSubmissionValue($data, 'probation_start_date', '');
-    $probationEnd = employmentSubmissionValue($data, 'probation_end_date', '');
-    if (isValidFormDate($probationStart) && isValidFormDate($probationEnd) && $probationEnd < $probationStart) {
-        $errors[] = [
-            'field' => 'employment_details.probation_end_date',
-            'message' => 'Probation end date cannot be before the probation start date'
-        ];
-    }
-
     // Declaration
     if (empty($data['submission']['declaration'])) {
         $errors[] = ['field' => 'submission.declaration', 'message' => 'Declaration must be accepted'];

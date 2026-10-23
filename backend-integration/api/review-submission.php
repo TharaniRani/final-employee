@@ -663,7 +663,7 @@ function submissionApprovalFieldMap(): array
         ],
         'employee_employment' => [
             'unit', 'branch', 'designation', 'employee_type', 'job_type', 'reporting_to',
-            'date_of_joining', 'probation_period', 'probation_start_date', 'probation_end_date'
+            'date_of_joining'
         ]
     ];
 
@@ -691,8 +691,8 @@ function submissionApprovalCollectionMap(): array
             'original_table' => 'employee_referrals',
             'primary_key' => 'referral_id',
             'columns' => [
-                'employee_id', 'referral_source', 'referred_by', 'family_members_working',
-                'working_name', 'working_unit', 'working_designation', 'family_members_studying',
+                'employee_id', // 'referral_source', 'referred_by', 'family_members_working',
+                'working_tmss_id', 'working_name', 'working_unit', 'working_designation', 'family_members_studying',
                 'student_name', 'student_unit', 'student_class', 'mobile_no'
             ]
         ],

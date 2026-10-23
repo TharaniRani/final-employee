@@ -237,20 +237,15 @@ $showStepper = !$isMobileVerification;
                 allowedFileTypes: ['application/pdf', 'image/jpeg', 'image/png']
             },
             schools: [
-                'Lady Andal House of Children, Chetpet',
-                'Lady Andal Open School - NIOS, T. Nagar',
-                'Lady Andal Open School - OS, T. Nagar',
-                'Lady Andal School - IB, Chetpet',
-                'Prem Vihar, Chetpet',
-                'School of Sound and Music, Chetpet',
-                'Shanthi Sadan, Chetpet',
+                'Lady Andal School - IB',
+                'Sir Mutha School - CBSE',
                 'Sir & Lady M. Venkatasubba Rao Hr., Sec., School, Tambaram',
-                'Sir Mutha School - CBSE, Chetpet',
-                'Sir Mutha Venkatasubba Rao Concert Hall, Chetpet',
-                'The Madras Seva Sadan - Head Office, Chetpet',
-                'The Madras Seva Sadan Hr., Sec., School, Chetpet',
-                'The Madras Seva Sadan Hr., Sec., School, Tambaram',
-                'The Madras Seva Sadan Nursery and Primary School, Tambaram'
+                'Lady Andal Open School',
+                'Lady Andal House of Children - NIOS',
+                'The Madras Seva Sadan Hr., Sec., School Chetpet',
+                'The Madras Seva Sadan Hr., Sec., School Tambaram',
+                'Lady Andal Venkatasubba Rao Mat., Hr., Sec., School',
+                'Sir M. Venkatasubba Rao Hr., Sec., School, T. Nagar'
             ],
             qualificationTypes: [
                 { value: 'X', label: 'X (10th Standard)' },

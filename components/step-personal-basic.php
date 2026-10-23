@@ -121,7 +121,7 @@ $stepIndex = $stepData['stepIndex'] ?? 0;
             </div>
 
             <div class="form-group">
-                <div class="form-label" id="alumni-label">Are you an alumnus of any Madras Seva Sadan school? <span
+                <div class="form-label" id="alumni-label">Have you studied in any of The Madras Seva Sadan Schools?<span
                         class="required-indicator" aria-hidden="true">*</span></div>
                 <fieldset class="verification-group" id="alumni-group" aria-labelledby="alumni-label">
                     <div class="radio-group radio-inline" role="radiogroup" aria-label="Alumni status">

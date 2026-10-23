@@ -169,6 +169,29 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
                         <label class="verification-option"><input type="radio" name="aadhaar_pan_linked_verification" value="wrong"><span>Wrong</span></label>
                     </div>
                 </fieldset>
+                <div class="form-help mt-3">
+                    <a href="https://www.youtube.com/shorts/fbk_J1SDW7Q"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="help-link-card">
+                        <svg class="help-link-icon" aria-hidden="true" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                        </svg>
+
+                        <span class="help-link-text">
+                            <strong>How to check if Aadhaar &amp; PAN are linked?</strong>
+                        </span>
+
+                        <svg class="help-link-arrow" aria-hidden="true" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
             </div>
         </form>
     </div>
@@ -187,3 +210,59 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
         </div>
     </div>
 </div>
+
+<style>
+    .help-link-card {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        background: var(--color-bg-focus);
+        border: 1px solid var(--color-border-focus);
+        border-radius: 10px;
+        color: #3730a3;
+        text-decoration: none;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 6px rgba(79, 70, 229, 0.1);
+    }
+    .help-link-card:hover {
+        background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+        border-color: #a5b4fc;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+        transform: translateY(-1px);
+        color: #312e81;
+        text-decoration: none;
+    }
+    .help-link-card:focus {
+        outline: 2px solid #4f46e5;
+        outline-offset: 2px;
+    }
+    .help-link-icon {
+        flex-shrink: 0;
+        width: 22px;
+        height: 22px;
+        color: #4f46e5;
+    }
+    .help-link-arrow {
+        flex-shrink: 0;
+        width: 20px;
+        height: 20px;
+        color: #4f46e5;
+        margin-left: 4px;
+        transition: transform 0.2s ease;
+    }
+    .help-link-card:hover .help-link-arrow {
+        transform: translateX(3px);
+    }
+    .help-link-text strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 2px;
+    }
+    .help-link-text small {
+        color: #5b57d4;
+        font-weight: 500;
+    }
+</style>

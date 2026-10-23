@@ -14,10 +14,7 @@ window.HRMS_EmploymentDetails = (function() {
         { key: 'employee_type', label: 'Employee Type (Grade)', type: 'select' },
         { key: 'job_type', label: 'Job Type', type: 'select' },
         { key: 'reporting_to', label: 'Reporting To', type: 'select' },
-        { key: 'date_of_joining', label: 'Date of Joining', type: 'date' },
-        { key: 'probation_period', label: 'Probation Period', type: 'select' },
-        { key: 'probation_start_date', label: 'Probation Start Date', type: 'date' },
-        { key: 'probation_end_date', label: 'Probation End Date', type: 'date' }
+        { key: 'date_of_joining', label: 'Date of Joining', type: 'date' }
     ];
     let options = {};
     let initialized = false;
@@ -41,7 +38,7 @@ window.HRMS_EmploymentDetails = (function() {
                 api.getEmploymentOptions()
             ]);
             const employmentOptions = employmentResult?.options;
-            const requiredFields = ['campus', 'employee_type', 'job_type', 'reporting_to', 'probation_period'];
+            const requiredFields = ['campus', 'employee_type', 'job_type', 'reporting_to'];
             if (!unitResult?.success || !Array.isArray(unitResult.units) ||
                 !employmentResult?.success || !employmentOptions ||
                 !requiredFields.every(field => Array.isArray(employmentOptions[field]) && employmentOptions[field].length > 0)) {

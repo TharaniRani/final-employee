@@ -47,7 +47,7 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
                     </div>
                 </div>
 
-                <div class="form-group">
+                <!-- <div class="form-group">
                     <label for="referral-source" class="form-label">Referral Source</label>
                     <div class="verification-group" id="referral-source-group">
                         <span class="verification-value" id="referral-source-display"></span>
@@ -75,7 +75,7 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
                             <label class="verification-option"><input type="radio" name="referral_source_verification" value="wrong"><span>Wrong</span></label>
                         </div>
                     </div>
-                </div>
+                </div> -->
             </div>
 
             <hr class="divider my-5">
@@ -190,10 +190,17 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
         <div class="repeater-item-body">
             <div class="form-row">
                 <div class="form-group">
+                    <label class="form-label">TMSS Employee ID <span class="required-indicator" aria-hidden="true">*</span></label>
+                    <input type="text" class="form-input" name="family_working_tmss_id[]" placeholder="Enter TMSS Employee ID" autocomplete="off" required>
+                    <div class="form-error" role="alert"></div>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Full Name <span class="required-indicator" aria-hidden="true">*</span></label>
                     <input type="text" class="form-input" name="family_working_name[]" placeholder="Enter full name" autocomplete="name" required>
                     <div class="form-error" role="alert"></div>
                 </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Unit Name <span class="required-indicator" aria-hidden="true">*</span></label>
                     <select class="form-select" name="family_working_unit[]" required>
@@ -202,11 +209,11 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>
-            <div class="form-group">
+            <!-- <div class="form-group">
                 <label class="form-label">Designation <span class="required-indicator" aria-hidden="true">*</span></label>
                 <input type="text" class="form-input" name="family_working_designation[]" placeholder="Enter designation" autocomplete="off" required>
                 <div class="form-error" role="alert"></div>
-            </div>
+            </div> -->
         </div>
     </div>
 </template>

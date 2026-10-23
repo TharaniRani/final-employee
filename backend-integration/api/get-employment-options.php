@@ -28,8 +28,7 @@ try {
         'campus' => 'branch',
         'employee_type' => 'employee_type',
         'job_type' => 'job_type',
-        'reporting_to' => 'reporting_to',
-        'probation_period' => 'probation_period'
+        'reporting_to' => 'reporting_to'
     ];
     $options = [];
 

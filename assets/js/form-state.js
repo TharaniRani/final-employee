@@ -83,7 +83,7 @@ window.HRMS_FormState = (function() {
         },
         referral: {
             referred_by_name: { original_value: '', verification: 'pending', corrected_value: null },
-            referral_source: { original_value: '', verification: 'pending', corrected_value: null },
+            // referral_source: { original_value: '', verification: 'pending', corrected_value: null },
             family_working: { original_value: '', verification: 'pending', corrected_value: null },
             family_working_details: [],
             family_studying: { original_value: '', verification: 'pending', corrected_value: null },
@@ -112,10 +112,7 @@ window.HRMS_FormState = (function() {
             employee_type: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
             job_type: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
             reporting_to: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
-            date_of_joining: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
-            probation_period: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
-            probation_start_date: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' },
-            probation_end_date: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' }
+            date_of_joining: { original_value: '', verification: 'pending', corrected_value: null, change: '', updated_value: '' }
         },
         submission: {
             status: 'draft',
@@ -228,7 +225,7 @@ window.HRMS_FormState = (function() {
         nok_state: 'next_of_kin.address.state',
         nok_country: 'next_of_kin.address.country',
         referred_by_name: 'referral.referred_by_name',
-        referral_source: 'referral.referral_source',
+        // referral_source: 'referral.referral_source',
         family_working: 'referral.family_working',
         family_studying: 'referral.family_studying',
         is_teacher: 'teacher_documents.is_teacher',
@@ -251,9 +248,6 @@ window.HRMS_FormState = (function() {
         employment_job_type: 'employment_details.job_type',
         employment_reporting_to: 'employment_details.reporting_to',
         employment_date_of_joining: 'employment_details.date_of_joining',
-        employment_probation_period: 'employment_details.probation_period',
-        employment_probation_start_date: 'employment_details.probation_start_date',
-        employment_probation_end_date: 'employment_details.probation_end_date',
         employment_unit_change: 'employment_details.unit.change',
         employment_campus_change: 'employment_details.campus.change',
         employment_designation_change: 'employment_details.designation.change',
@@ -261,9 +255,6 @@ window.HRMS_FormState = (function() {
         employment_job_type_change: 'employment_details.job_type.change',
         employment_reporting_to_change: 'employment_details.reporting_to.change',
         employment_date_of_joining_change: 'employment_details.date_of_joining.change',
-        employment_probation_period_change: 'employment_details.probation_period.change',
-        employment_probation_start_date_change: 'employment_details.probation_start_date.change',
-        employment_probation_end_date_change: 'employment_details.probation_end_date.change',
         employment_unit_updated: 'employment_details.unit.updated_value',
         employment_campus_updated: 'employment_details.campus.updated_value',
         employment_designation_updated: 'employment_details.designation.updated_value',
@@ -271,9 +262,6 @@ window.HRMS_FormState = (function() {
         employment_job_type_updated: 'employment_details.job_type.updated_value',
         employment_reporting_to_updated: 'employment_details.reporting_to.updated_value',
         employment_date_of_joining_updated: 'employment_details.date_of_joining.updated_value',
-        employment_probation_period_updated: 'employment_details.probation_period.updated_value',
-        employment_probation_start_date_updated: 'employment_details.probation_start_date.updated_value',
-        employment_probation_end_date_updated: 'employment_details.probation_end_date.updated_value',
         declaration: 'submission.declaration',
         terms_accepted: 'submission.terms_accepted'
     };
@@ -485,6 +473,7 @@ window.HRMS_FormState = (function() {
         addFamilyWorking(entry = {}) {
             const newEntry = {
                 id: generateId('fw'),
+                tmss_id: { original_value: '', verification: 'pending', corrected_value: null },
                 name: { original_value: '', verification: 'pending', corrected_value: null },
                 unit: { original_value: '', verification: 'pending', corrected_value: null },
                 designation: { original_value: '', verification: 'pending', corrected_value: null },
@@ -702,10 +691,7 @@ window.HRMS_FormState = (function() {
                 employment_employee_type: 'employment_details.employee_type',
                 employment_job_type: 'employment_details.job_type',
                 employment_reporting_to: 'employment_details.reporting_to',
-                employment_date_of_joining: 'employment_details.date_of_joining',
-                employment_probation_period: 'employment_details.probation_period',
-                employment_probation_start_date: 'employment_details.probation_start_date',
-                employment_probation_end_date: 'employment_details.probation_end_date'
+                employment_date_of_joining: 'employment_details.date_of_joining'
             };
 
             Object.entries(employeeFieldMap).forEach(([employeeField, statePath]) => {
@@ -730,7 +716,7 @@ window.HRMS_FormState = (function() {
             setOriginal('next_of_kin.address.state', employeeData.nok_state);
             setOriginal('next_of_kin.address.country', employeeData.nok_country);
             setOriginal('referral.referred_by_name', employeeData.referred_by);
-            setOriginal('referral.referral_source', employeeData.referral_source);
+            // setOriginal('referral.referral_source', employeeData.referral_source);
             setOriginal('referral.family_working', employeeData.family_working);
             setOriginal('referral.family_studying', employeeData.family_studying);
             this.set('address.same_as_permanent.original_value', employeeData.same_as_permanent || '');
@@ -788,6 +774,7 @@ window.HRMS_FormState = (function() {
             const studyingRows = referralRows.filter(row => String(row.student_name || '').trim() !== '');
             this.set('referral.family_working_details', workingRows.map((row, index) => ({
                 id: `db-family-working-${row.referral_id || index}`,
+                tmss_id: makeVerifiedField(row.working_tmss_id),
                 name: makeVerifiedField(row.working_name),
                 unit: makeVerifiedField(row.working_unit),
                 designation: makeVerifiedField(row.working_designation)

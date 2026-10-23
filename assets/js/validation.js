@@ -134,8 +134,12 @@ window.HRMS_Validation = (function() {
         'nok_country': { required: true, message: 'Select NOK country' },
 
         // Referral
-        referral_source: { required: false },
+        // referral_source: { required: false },
         family_working: { required: true, message: 'Select yes/no' },
+        'family_working_details.*.tmss_id': {
+            required: true,
+            message: 'Enter TMSS Employee ID'
+        },
         'family_working_details.*.name': {
             required: true,
             message: 'Enter family member name'
@@ -144,10 +148,10 @@ window.HRMS_Validation = (function() {
             required: true,
             message: 'Select unit'
         },
-        'family_working_details.*.designation': {
-            required: true,
-            message: 'Enter designation'
-        },
+        // 'family_working_details.*.designation': {
+        //     required: true,
+        //     message: 'Enter designation'
+        // },
         family_studying: { required: true, message: 'Select yes/no' },
         'family_studying_details.*.name': {
             required: true,
@@ -265,20 +269,6 @@ window.HRMS_Validation = (function() {
         employment_job_type: { required: true, message: 'Select a job type' },
         employment_reporting_to: { required: true, message: 'Select who you report to' },
         employment_date_of_joining: { required: true, message: 'Select your date of joining' },
-        employment_probation_period: { required: true, message: 'Select a probation period' },
-        employment_probation_start_date: { required: true, message: 'Select the probation start date' },
-        employment_probation_end_date: {
-            required: true,
-            message: 'Select the probation end date',
-            custom: (value, formState) => {
-                const startField = formState?.employment_details?.probation_start_date;
-                const startDate = startField?.change === 'Yes'
-                    ? startField.updated_value
-                    : startField?.original_value;
-                return !startDate || value >= startDate;
-            },
-            customMessage: 'Probation end date cannot be before the start date'
-        },
 
         // Declaration
         declaration: { required: true, message: 'You must accept the declaration' },
@@ -449,7 +439,7 @@ window.HRMS_Validation = (function() {
                 'nok_address_line3', 'nok_city', 'nok_pincode', 'nok_state', 'nok_country'
             ],
             'referral': [
-                'referred_by_name', 'referral_source', 'family_working',
+                'referred_by_name', 'family_working',
                 'family_studying'
             ],
             'education': [
@@ -487,10 +477,7 @@ window.HRMS_Validation = (function() {
                 ['employee_type', 'Employee Type (Grade)'],
                 ['job_type', 'Job Type'],
                 ['reporting_to', 'Reporting To'],
-                ['date_of_joining', 'Date of Joining'],
-                ['probation_period', 'Probation Period'],
-                ['probation_start_date', 'Probation Start Date'],
-                ['probation_end_date', 'Probation End Date']
+                ['date_of_joining', 'Date of Joining']
             ];
 
             employmentFields.forEach(([field, label]) => {
@@ -546,9 +533,9 @@ window.HRMS_Validation = (function() {
                     });
                 } else {
                     const fwErrors = validateArrayItems('referral.family_working_details', {
+                        tmss_id: rules['family_working_details.*.tmss_id'],
                         name: rules['family_working_details.*.name'],
-                        unit: rules['family_working_details.*.unit'],
-                        designation: rules['family_working_details.*.designation']
+                        unit: rules['family_working_details.*.unit']
                     }, state);
                     errors.push(...fwErrors);
                 }
@@ -702,9 +689,10 @@ window.HRMS_Validation = (function() {
                 certificate_file_id: '.education-certificate-upload .file-upload-zone'
             },
             'referral.family_working_details': {
+                tmss_id: '[name="family_working_tmss_id[]"]',
                 name: '[name="family_working_name[]"]',
-                unit: '[name="family_working_unit[]"]',
-                designation: '[name="family_working_designation[]"]'
+                unit: '[name="family_working_unit[]"]'
+                // designation: '[name="family_working_designation[]"]'
             },
             'referral.family_studying_details': {
                 name: '[name="family_studying_name[]"]',

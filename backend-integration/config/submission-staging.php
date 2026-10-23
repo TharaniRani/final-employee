@@ -131,15 +131,14 @@ function submissionOriginalValueSnapshots(PDO $pdo, int $employeeId, array $chan
         ]],
         'employee_employment' => ['employment_id', [
             'unit', 'branch', 'designation', 'employee_type', 'job_type',
-            'reporting_to', 'date_of_joining', 'probation_period',
-            'probation_start_date', 'probation_end_date'
+            'reporting_to', 'date_of_joining'
         ]]
     ];
     $collectionTables = [
         'employee_referrals.all' => [
             'employee_referrals', 'referral_id',
-            ['referral_source', 'referred_by', 'family_members_working', 'working_name',
-                'working_unit', 'working_designation', 'family_members_studying',
+            [// 'referral_source', 'referred_by', 'family_members_working', 'working_tmss_id',
+                'working_name', 'working_unit', 'working_designation', 'family_members_studying',
                 'student_name', 'student_unit', 'student_class']
         ],
         'educational_qualifications.all' => [
@@ -311,9 +310,10 @@ function buildSubmissionReferralRows(PDO $pdo, int $employeeId, array $referral)
         $workingMember = $working[$index] ?? [];
         $student = $students[$index] ?? [];
         $rows[] = array_replace($baseline, [
-            'referral_source' => (string) ($referral['referred_by']['source'] ?? ''),
+            // 'referral_source' => (string) ($referral['referred_by']['source'] ?? ''),
             'referred_by' => (string) ($referral['referred_by']['name'] ?? ''),
             'family_members_working' => (string) ($referral['family_members_working'] ?? 'No'),
+            'working_tmss_id' => (string) ($workingMember['tmss_id'] ?? ''),
             'working_name' => (string) ($workingMember['name'] ?? ''),
             'working_unit' => submissionUnitId($workingMember['unit'] ?? '', $baseline['working_unit'] ?? ''),
             'working_designation' => (string) ($workingMember['designation'] ?? ''),
@@ -437,14 +437,11 @@ function stageSubmissionRows(
         'employee_type' => $employment['employee_type'] ?? null,
         'job_type' => $employment['job_type'] ?? null,
         'reporting_to' => $employment['reporting_to'] ?? null,
-        'date_of_joining' => submissionDatabaseDate($employment['date_of_joining'] ?? ''),
-        'probation_period' => (string) ($employment['probation_period'] ?? ''),
-        'probation_start_date' => submissionDatabaseDate($employment['probation_start_date'] ?? ''),
-        'probation_end_date' => submissionDatabaseDate($employment['probation_end_date'] ?? '')
+        'date_of_joining' => submissionDatabaseDate($employment['date_of_joining'] ?? '')
     ];
     $employmentFields = [
         'unit', 'branch', 'designation', 'employee_type', 'job_type', 'reporting_to',
-        'date_of_joining', 'probation_period', 'probation_start_date', 'probation_end_date'
+        'date_of_joining'
     ];
     $employmentChanges = getSubmissionTableChanges(
         $pdo,
@@ -491,8 +488,8 @@ function stageSubmissionRows(
 
     $referralRows = buildSubmissionReferralRows($pdo, $employeeId, $data['referral'] ?? []);
     $referralFields = [
-        'referral_source', 'referred_by', 'family_members_working', 'working_name',
-        'working_unit', 'working_designation', 'family_members_studying', 'student_name',
+        // 'referral_source', 'referred_by', 'family_members_working', 'working_tmss_id',
+        'working_name', 'working_unit', 'working_designation', 'family_members_studying', 'student_name',
         'student_unit', 'student_class'
     ];
     $referralsChanged = submissionCollectionChanged(
