@@ -2,6 +2,7 @@
 /**
  * Queries for the finalized HRMS employee schema.
  */
+require_once __DIR__ . '/document-storage.php';
 
 function hrmsMobileSql(string $column): string
 {
@@ -31,6 +32,34 @@ function findHrmsEmployeeIdByMobile(PDO $pdo, string $mobile): ?int
     }
 
     return (int) $employeeIds[0];
+}
+
+function findHrmsFamilyMemberEmploymentByMssId(PDO $pdo, string $mssEmployeeId): ?array
+{
+    $stmt = $pdo->prepare("
+        SELECT e.employee_id, e.mss_employee_id, e.full_name, em.unit, em.designation
+        FROM employees e
+        INNER JOIN employee_employment em
+            ON em.employment_id = (
+                SELECT latest_employment.employment_id
+                FROM employee_employment latest_employment
+                WHERE latest_employment.employee_id = e.employee_id
+                ORDER BY latest_employment.employment_id DESC
+                LIMIT 1
+            )
+        WHERE TRIM(e.mss_employee_id) = ?
+          AND LOWER(TRIM(e.working_status)) IN ('working', 'active')
+        ORDER BY e.employee_id
+        LIMIT 2
+    ");
+    $stmt->execute([$mssEmployeeId]);
+    $matches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (count($matches) > 1) {
+        throw new RuntimeException('The MSS employee ID is associated with multiple employee records');
+    }
+
+    return $matches[0] ?? null;
 }
 
 function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
@@ -80,10 +109,9 @@ function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
             (SELECT i.pg_degree_status FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_status,
             (SELECT i.pg_degree_institution FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_institution,
             (SELECT r.referred_by FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referred_by,
-            // (SELECT r.referral_source FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referral_source,
             (SELECT r.family_members_working FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_working,
             (SELECT r.family_members_studying FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_studying,
-            (SELECT r.working_tmss_id FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_tmss_id), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_tmss_id,
+            NULL AS family_working_tmss_id,
             (SELECT r.working_name FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_name), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_name,
             (SELECT r.working_unit FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(r.working_name, '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_unit,
             (SELECT r.working_designation FROM employee_referrals r WHERE r.employee_id = e.employee_id AND NULLIF(TRIM(r.working_name), '') IS NOT NULL ORDER BY r.referral_id DESC LIMIT 1) AS family_working_designation,
@@ -196,10 +224,92 @@ function getHrmsEducationRows(PDO $pdo, int $employeeId): array
     $stmt->execute([$employeeId]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$row) {
-        $row['certificate_name'] = hrmsStoredFileName($row['certificate_path'] ?? null);
+        $storedPath = (string) ($row['certificate_path'] ?? '');
+        $filePath = $storedPath === ''
+            ? null
+            : resolveExistingEmployeeDocument(dirname(__DIR__, 2), 'education_certificate', $storedPath);
+        $row['certificate_name'] = $filePath === null ? '' : hrmsStoredFileName($storedPath);
+        $row['has_certificate'] = $filePath !== null;
+        unset($row['certificate_path']);
     }
     unset($row);
     return $rows;
+}
+
+function getHrmsExistingIdentityDocuments(PDO $pdo, int $employeeId): array
+{
+    $stmt = $pdo->prepare("
+        SELECT aadhar_copy, pan_copy, photo, resume, staff_sign
+        FROM employee_identification
+        WHERE employee_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$employeeId]);
+    $identity = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $documents = [];
+    foreach ([
+        'aadhaar' => ['aadhar_copy', 'aadhaar'],
+        'pan' => ['pan_copy', 'pan'],
+        'photo' => ['photo', 'photo'],
+        'resume' => ['resume', 'resume'],
+        'signature' => ['staff_sign', 'signature']
+    ] as $type => [$column, $storageType]) {
+        $storedPath = (string) ($identity[$column] ?? '');
+        $filePath = $storedPath === ''
+            ? null
+            : resolveExistingEmployeeDocument(dirname(__DIR__, 2), $storageType, $storedPath);
+        $filename = $filePath === null ? '' : hrmsStoredFileName($storedPath);
+        $documents[$type] = [
+            'filename' => $filename,
+            'exists' => $filePath !== null
+        ];
+    }
+
+    $documentTypes = [
+        'aadhaar' => ['aadhaar', 'aadhar'],
+        'pan' => ['pan'],
+        'photo' => ['photo'],
+        'resume' => ['resume'],
+        'signature' => ['signature', 'staff_sign']
+    ];
+    $placeholders = implode(', ', array_fill(0, count(array_unique(array_merge(...array_values($documentTypes)))), '?'));
+    $documentStmt = $pdo->prepare("
+        SELECT document_type, original_name, file_path
+        FROM employee_documents
+        WHERE employee_id = ? AND LOWER(REPLACE(document_type, '-', '_')) IN ($placeholders)
+        ORDER BY id DESC
+    ");
+    $documentStmt->execute([
+        $employeeId,
+        ...array_unique(array_merge(...array_values($documentTypes)))
+    ]);
+    foreach ($documentStmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
+        $type = strtolower(str_replace('-', '_', (string) ($document['document_type'] ?? '')));
+        foreach ($documentTypes as $identityType => $aliases) {
+            if ($documents[$identityType]['exists'] || !in_array($type, $aliases, true)) {
+                continue;
+            }
+
+            $filePath = resolveExistingEmployeeDocument(
+                dirname(__DIR__, 2),
+                $type,
+                (string) ($document['file_path'] ?? '')
+            );
+            if ($filePath === null) {
+                continue;
+            }
+
+            $documents[$identityType] = [
+                'filename' => trim((string) ($document['original_name'] ?? '')) ?: hrmsStoredFileName($filePath),
+                'exists' => true
+            ];
+            break;
+        }
+    }
+
+    return $documents;
 }
 
 function getHrmsExperienceRows(PDO $pdo, int $employeeId): array
@@ -226,8 +336,8 @@ function getHrmsExperienceRows(PDO $pdo, int $employeeId): array
 function getHrmsReferralRows(PDO $pdo, int $employeeId): array
 {
     $stmt = $pdo->prepare("
-        SELECT referral_id, // referral_source, referred_by, family_members_working,
-               working_tmss_id, working_name, working_unit, working_designation,
+        SELECT referral_id, referred_by, family_members_working,
+               NULL AS working_tmss_id, working_name, working_unit, working_designation,
                family_members_studying, student_name, student_unit, student_class
         FROM employee_referrals
         WHERE employee_id = ?
@@ -240,13 +350,26 @@ function getHrmsReferralRows(PDO $pdo, int $employeeId): array
 function getHrmsEmployeeDocuments(PDO $pdo, int $employeeId): array
 {
     $stmt = $pdo->prepare("
-        SELECT id, document_type, original_name
+        SELECT id, document_type, original_name, file_path
         FROM employee_documents
         WHERE employee_id = ?
         ORDER BY id
     ");
     $stmt->execute([$employeeId]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $documents = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
+        $storedPath = str_replace('\\', '/', trim((string) ($document['file_path'] ?? '')));
+        $normalizedPath = preg_replace('~^(?:\./|/)+~', '', $storedPath);
+        if ($normalizedPath === '' ||
+            preg_match('~(?:^|/)employees_temp_documents(?:/|$)~i', $normalizedPath) === 1) {
+            continue;
+        }
+
+        unset($document['file_path']);
+        $documents[] = $document;
+    }
+
+    return $documents;
 }
 
 function getHrmsLegacyDocumentNames(PDO $pdo, int $employeeId): array

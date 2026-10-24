@@ -18,7 +18,9 @@ window.HRMS_FormState = (function() {
             mobile_number: { original_value: '', verification: 'pending', corrected_value: null },
             is_alumni: '',
             alumni_school: '',
-            resume_file_id: null
+            resume_file_id: null,
+            resume_existing_document_available: false,
+            resume_existing_document_name: ''
         },
         address: {
             current: {
@@ -45,17 +47,25 @@ window.HRMS_FormState = (function() {
             aadhaar: {
                 name: { original_value: '', verification: 'pending', corrected_value: null },
                 number: { original_value: '', verification: 'pending', corrected_value: null },
-                file_id: null
+                file_id: null,
+                existing_document_available: false,
+                existing_document_name: ''
             },
             pan: {
                 number: { original_value: '', verification: 'pending', corrected_value: null },
-                file_id: null
+                file_id: null,
+                existing_document_available: false,
+                existing_document_name: ''
             },
             aadhaar_pan_linked: { original_value: '', verification: 'pending', corrected_value: null }
         },
         personal_details: {
             photo_file_id: null,
+            photo_existing_document_available: false,
+            photo_existing_document_name: '',
             signature_file_id: null,
+            signature_existing_document_available: false,
+            signature_existing_document_name: '',
             date_of_birth: { original_value: '', verification: 'pending', corrected_value: null },
             gender: { original_value: '', verification: 'pending', corrected_value: null },
             marital_status: { original_value: '', verification: 'pending', corrected_value: null },
@@ -268,10 +278,20 @@ window.HRMS_FormState = (function() {
 
     function bindFormInputs() {
         const syncPermanentLocation = (sameAsCurrent) => {
-            ['city', 'pincode', 'state', 'country'].forEach(field => {
+            ['address_line1', 'address_line2', 'address_line3', 'city', 'pincode', 'state', 'country'].forEach(field => {
                 const permanentPath = `address.permanent.${field}`;
+                const currentValue = window.HRMS_FormState.get(`address.current.${field}`);
+                const currentText = currentValue?.verification === 'wrong' &&
+                    currentValue.corrected_value !== null &&
+                    currentValue.corrected_value !== undefined &&
+                    currentValue.corrected_value !== ''
+                    ? currentValue.corrected_value
+                    : currentValue?.original_value;
+                const existingPermanentValue = window.HRMS_FormState.get(permanentPath);
                 const value = sameAsCurrent
-                    ? window.HRMS_FormState.get(`address.current.${field}`)
+                    ? currentText !== null && currentText !== undefined && String(currentText).trim() !== ''
+                        ? currentValue
+                        : existingPermanentValue
                     : {
                         original_value: '',
                         verification: 'pending',
@@ -345,7 +365,10 @@ window.HRMS_FormState = (function() {
             if (mappedName === 'same_as_permanent') {
                 syncPermanentLocation(value === 'Yes');
             } else if (
-                ['curr_city', 'curr_pincode', 'curr_state', 'curr_country'].includes(mappedName) &&
+                [
+                    'curr_address_line1', 'curr_address_line2', 'curr_address_line3',
+                    'curr_city', 'curr_pincode', 'curr_state', 'curr_country'
+                ].includes(mappedName) &&
                 window.HRMS_FormState.get('address.same_as_permanent.original_value') === 'Yes'
             ) {
                 syncPermanentLocation(true);
@@ -639,10 +662,6 @@ window.HRMS_FormState = (function() {
                 .filter(document => types.includes(String(document.document_type || '').toLowerCase().replace(/-/g, '_')))
                 .map(document => String(document.id));
             const resumeIds = findDocumentIds(['resume']);
-            const aadhaarIds = findDocumentIds(['aadhaar', 'aadhar']);
-            const panIds = findDocumentIds(['pan']);
-            const photoIds = findDocumentIds(['photo']);
-            const signatureIds = findDocumentIds(['signature', 'staff_sign']);
             const bedIds = findDocumentIds(['bed']);
             const drivingIds = findDocumentIds(['driving', 'driving_license']);
             const policeIds = findDocumentIds(['police_verification']);
@@ -680,6 +699,10 @@ window.HRMS_FormState = (function() {
                 permanent_address: 'address.permanent.address_line1',
                 permanent_address_line2: 'address.permanent.address_line2',
                 permanent_address_line3: 'address.permanent.address_line3',
+                permanent_city: 'address.permanent.city',
+                permanent_pincode: 'address.permanent.pincode',
+                permanent_state: 'address.permanent.state',
+                permanent_country: 'address.permanent.country',
                 is_teacher: 'teacher_documents.is_teacher',
                 bed_status: 'teacher_documents.bed_status',
                 bed_institution: 'teacher_documents.bed_institution',
@@ -721,11 +744,20 @@ window.HRMS_FormState = (function() {
             setOriginal('referral.family_studying', employeeData.family_studying);
             this.set('address.same_as_permanent.original_value', employeeData.same_as_permanent || '');
             if (employeeData.same_as_permanent === 'Yes') {
-                ['city', 'pincode', 'state', 'country'].forEach(field => {
-                    this.set(
-                        `address.permanent.${field}`,
-                        this.get(`address.current.${field}`)
-                    );
+                [
+                    'address_line1', 'address_line2', 'address_line3',
+                    'city', 'pincode', 'state', 'country'
+                ].forEach(field => {
+                    const currentAddress = this.get(`address.current.${field}`);
+                    const currentValue = currentAddress?.verification === 'wrong' &&
+                        currentAddress.corrected_value !== null &&
+                        currentAddress.corrected_value !== undefined &&
+                        currentAddress.corrected_value !== ''
+                        ? currentAddress.corrected_value
+                        : currentAddress?.original_value;
+                    if (currentValue !== null && currentValue !== undefined && String(currentValue).trim() !== '') {
+                        this.set(`address.permanent.${field}`, currentAddress);
+                    }
                 });
             }
             if (employeeData.is_alumni !== undefined) {
@@ -734,16 +766,55 @@ window.HRMS_FormState = (function() {
             this.set('personal_basic.alumni_school', employeeData.alumni_school || '');
 
             this.set('personal_basic.resume_file_id', resumeIds[0] || null);
-            this.set('aadhaar_pan.aadhaar.file_id', aadhaarIds[0] || null);
-            this.set('aadhaar_pan.pan.file_id', panIds[0] || null);
-            this.set('personal_details.photo_file_id', photoIds[0] || null);
-            this.set('personal_details.signature_file_id', signatureIds[0] || null);
+            this.set(
+                'personal_basic.resume_existing_document_available',
+                !!employeeData.existing_documents?.resume?.exists
+            );
+            this.set(
+                'personal_basic.resume_existing_document_name',
+                employeeData.existing_documents?.resume?.filename || ''
+            );
+            this.set('aadhaar_pan.aadhaar.file_id', null);
+            this.set('aadhaar_pan.pan.file_id', null);
+            this.set('personal_details.photo_file_id', null);
+            this.set('personal_details.signature_file_id', null);
+            this.set(
+                'aadhaar_pan.aadhaar.existing_document_available',
+                !!employeeData.existing_documents?.aadhaar?.exists
+            );
+            this.set(
+                'aadhaar_pan.aadhaar.existing_document_name',
+                employeeData.existing_documents?.aadhaar?.filename || ''
+            );
+            this.set(
+                'aadhaar_pan.pan.existing_document_available',
+                !!employeeData.existing_documents?.pan?.exists
+            );
+            this.set(
+                'aadhaar_pan.pan.existing_document_name',
+                employeeData.existing_documents?.pan?.filename || ''
+            );
+            this.set(
+                'personal_details.photo_existing_document_available',
+                !!employeeData.existing_documents?.photo?.exists
+            );
+            this.set(
+                'personal_details.photo_existing_document_name',
+                employeeData.existing_documents?.photo?.filename || ''
+            );
+            this.set(
+                'personal_details.signature_existing_document_available',
+                !!employeeData.existing_documents?.signature?.exists
+            );
+            this.set(
+                'personal_details.signature_existing_document_name',
+                employeeData.existing_documents?.signature?.filename || ''
+            );
             this.set('teacher_documents.bed_file_id', bedIds[0] || null);
             this.set('teacher_documents.driving_license_file_id', drivingIds[0] || null);
             this.set('teacher_documents.police_verification_file_id', policeIds[0] || null);
 
-            const educationCertificates = findDocumentIds(['education_certificate']);
-            this.set('education', (employeeData.education || []).map((row, index) => ({
+            this.set('education', (employeeData.education || []).map(row => ({
                 id: `db-education-${row.id}`,
                 qualification_type: makeVerifiedField(row.qualification_type),
                 qualification_name: makeVerifiedField(row.qualification_details),
@@ -751,8 +822,10 @@ window.HRMS_FormState = (function() {
                 special_talents: makeVerifiedField(''),
                 institution: makeVerifiedField(row.institution),
                 year_of_completion: makeVerifiedField(row.completion_year),
-                certificate_file_id: educationCertificates[index] || null,
-                legacy_certificate_name: row.certificate_name || ''
+                certificate_file_id: null,
+                legacy_certificate_name: row.certificate_name || '',
+                existing_certificate_available: !!row.has_certificate,
+                existing_row_id: Number(row.id)
             })));
 
             const experienceLetters = findDocumentIds(['experience_letter']);

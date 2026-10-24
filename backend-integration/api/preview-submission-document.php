@@ -246,8 +246,34 @@ function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $stored
         return null;
     }
 
+    if (preg_match(
+        '#^employees_temp_documents/([a-z0-9_-]+)/' . preg_quote((string) $employeeId, '#') . '/([^/]+)$#',
+        $relativePath,
+        $matches
+    ) && in_array($matches[1], [
+        'aadhar', 'pan', 'photo', 'sign', 'resume', 'certificate_path',
+        'pg_degree_doc', 'driving', 'others', 'ccs'
+    ], true) && basename($matches[2]) === $matches[2]) {
+        $candidate = realpath($projectRoot . DIRECTORY_SEPARATOR .
+            str_replace('/', DIRECTORY_SEPARATOR, $relativePath));
+        $temporaryRoot = realpath(
+            $projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' .
+            DIRECTORY_SEPARATOR . $matches[1] . DIRECTORY_SEPARATOR . $employeeId
+        );
+        if ($candidate !== false && $temporaryRoot !== false &&
+            str_starts_with(strtolower($candidate), strtolower($temporaryRoot . DIRECTORY_SEPARATOR)) &&
+            is_file($candidate)) {
+            return $candidate;
+        }
+        return null;
+    }
+
     if (basename($relativePath) !== $relativePath) {
         return null;
+    }
+    $legacyDocumentPath = resolveLegacyEmployeeDocumentPath($pdo, $employeeId, $projectRoot, $relativePath);
+    if ($legacyDocumentPath !== null) {
+        return $legacyDocumentPath;
     }
     $stmt = $pdo->prepare("
         SELECT file_path, stored_name, document_type
@@ -276,6 +302,69 @@ function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $stored
     return is_string($document['file_path'])
         ? resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $document['file_path'])
         : null;
+}
+
+function resolveLegacyEmployeeDocumentPath(
+    PDO $pdo,
+    int $employeeId,
+    string $projectRoot,
+    string $storedName
+): ?string {
+    $identity = $pdo->prepare("
+        SELECT aadhar_copy, pan_copy, photo, staff_sign, resume, driving
+        FROM employee_identification
+        WHERE employee_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $identity->execute([$employeeId]);
+    $identityRow = $identity->fetch(PDO::FETCH_ASSOC) ?: [];
+    $documents = [];
+    foreach ([
+        'aadhar_copy' => 'aadhaar',
+        'pan_copy' => 'pan',
+        'photo' => 'photo',
+        'staff_sign' => 'signature',
+        'resume' => 'resume',
+        'driving' => 'driving'
+    ] as $column => $type) {
+        if (!empty($identityRow[$column])) {
+            $documents[] = [$identityRow[$column], $type];
+        }
+    }
+
+    $education = $pdo->prepare("
+        SELECT certificate_path
+        FROM educational_qualifications
+        WHERE employee_id = ? AND certificate_path IS NOT NULL AND TRIM(certificate_path) <> ''
+    ");
+    $education->execute([$employeeId]);
+    foreach ($education->fetchAll(PDO::FETCH_COLUMN) as $path) {
+        $documents[] = [$path, 'education_certificate'];
+    }
+
+    foreach ($documents as [$storedPath, $type]) {
+        $normalizedPath = str_replace('\\', '/', trim((string) $storedPath));
+        if (basename($normalizedPath) !== $storedName) {
+            continue;
+        }
+        $candidatePath = str_starts_with($normalizedPath, 'assets/requests/employees/')
+            ? $projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $normalizedPath)
+            : $projectRoot . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR .
+                'requests' . DIRECTORY_SEPARATOR . 'employees' . DIRECTORY_SEPARATOR .
+                submissionEmployeeDocumentFolder($type) . DIRECTORY_SEPARATOR . $storedName;
+        $candidate = realpath($candidatePath);
+        $legacyRoot = realpath(
+            $projectRoot . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR .
+            'requests' . DIRECTORY_SEPARATOR . 'employees'
+        );
+        if ($candidate !== false && $legacyRoot !== false && is_file($candidate) &&
+            str_starts_with(strtolower($candidate), strtolower($legacyRoot . DIRECTORY_SEPARATOR))) {
+            return $candidate;
+        }
+    }
+
+    return null;
 }
 
 function resolveAbsoluteEmployeeUpload(string $projectRoot, int $employeeId, string $storedPath): ?string

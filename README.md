@@ -148,9 +148,15 @@ HRMS-form/
    `employee_documents`. New submissions are stored using
    the compact JSON structure produced by
    `backend-integration/config/submission-serializer.php`; document references
-   in that JSON are employee-owned relative paths such as
-   `uploads/documents/2/<stored-filename>`, not database file IDs. Previously
-   saved submission JSON is not rewritten automatically.
+   in that JSON are employee-owned relative paths. New and replacement files
+   remain under `employees_temp_documents/<category>/<employee-id>/` while HR
+   reviews them. After approval, they are promoted to the existing
+   `assets/requests/employees/<category>/` folders and the matching
+   `employee_identification` or `educational_qualifications` path is updated.
+   Rejected changes do not replace the employee's existing document. Existing
+   documents are served through an OTP-authenticated endpoint; direct web access
+   to the permanent and temporary document folders is denied. Previously saved
+   submission JSON is not rewritten automatically.
 
    To review submissions locally, open `http://localhost/curosr-employee/hr-review.php`.
    Configure `HR_LOGIN_USERNAME`, `HR_LOGIN_PASSWORD_HASH`, `HR_REVIEWER_ID`, and
@@ -191,12 +197,19 @@ HRMS-form/
    versions without replacing baseline records. The second allows unchanged
    scalar columns to remain `NULL`; submission staging inserts only changed
    scalar values plus the employee/submission linkage and audit metadata.
+   Apply
+   `backend-integration/config/migrations/003-store-family-working-unit-as-text.sql`
+   once to store the exact family-member Unit text from `employee_employment`.
+   Apply
+   `backend-integration/config/migrations/004-store-family-studying-school-as-text.sql`
+   once to store the selected family-studying school name in the existing
+   referral columns, which previously accepted numeric IDs only.
    Repeatable sections remain staged as a complete section snapshot when that
    section itself changed, because approval replaces that section as a unit.
-   Uploaded documents are stored under the existing `uploads/documents/` root,
-   grouped by document category and then employee ID (for example,
-   `uploads/documents/aadhar/8/` and `uploads/documents/pan/8/`). Existing
-   documents in the previous employee-ID-only folders remain readable.
+   New employee document changes use `employees_temp_documents/` until approval
+   and are then stored in the existing `assets/requests/employees/` folders.
+   Earlier `uploads/documents/` files and employee-ID-only folders remain
+   readable for compatibility with older submissions.
    HR approve/reject endpoints are intentionally
    protected by the existing HR login session. The HR application must set
    `$_SESSION['user_role']` to `HR`, `$_SESSION['hr_user_id']` to a numeric
@@ -229,6 +242,30 @@ HRMS-form/
    No HR login page is included in this employee-facing project;
    the endpoint depends on the organization's existing authenticated HR session.
 
+### Test the document approval workflow locally
+
+1. Start Apache and MySQL, configure the local `.env`, and use a registered
+   employee mobile number. Complete the local OTP flow. Existing Aadhaar, PAN,
+   photo, signature, and qualification certificates should show their filenames
+   and a **View Existing** link; missing documents should offer an upload field.
+2. Replace one existing document and upload one missing document. Submit the
+   form and confirm their files are in
+   `employees_temp_documents/<category>/<employee-id>/` and their
+   `employee_documents.file_path` values are relative paths under that folder.
+3. Sign in to the HR review page using the configured local HR account. Approve
+   the corresponding `employee_identification.<column>` field or
+   `educational_qualifications.all` section. Confirm the new file is moved to
+   `assets/requests/employees/<category>/`, the permanent database path is
+   relative, and the original filename/path was not overwritten.
+4. Submit another replacement and reject that field. Confirm the original
+   `employee_identification` or education certificate path is unchanged.
+   Directly opening a file URL under either document folder should be denied;
+   viewing existing employee files should work only through the authenticated
+   endpoint.
+
+Apache must allow `.htaccess` overrides for the project directories so the
+document-folder access rules take effect.
+
    In-progress form values are saved as browser-local JSON scoped to the
    verified mobile number and restored after a refresh. Selected file contents
    are kept in browser IndexedDB. Neither form drafts nor files are sent to the
@@ -236,9 +273,10 @@ HRMS-form/
    included with the submitted form. Browser-local drafts and files are cleared
    after successful submission.
 
-4. **Create Uploads Directory**:
+4. **Create Document Directories**:
    ```bash
    mkdir -p /xampp/htdocs/HRMS-form/uploads/documents
+   mkdir -p /xampp/htdocs/HRMS-form/employees_temp_documents
    chmod -R 755 /xampp/htdocs/HRMS-form/uploads
    # On Linux: chown -R www-data:www-data /xampp/htdocs/HRMS-form/uploads
    ```

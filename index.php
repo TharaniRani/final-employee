@@ -127,7 +127,6 @@ $showStepper = !$isMobileVerification;
                 <?php include __DIR__ . '/components/mobile-verification.php'; ?>
             <?php else: ?>
                 <div class="form-wizard" id="form-wizard">
-                    <section class="existing-documents-summary" id="existing-legacy-documents" aria-label="Existing documents on file" hidden></section>
                     <section class="existing-documents-summary" id="existing-legacy-details" aria-label="Additional legacy employee details" hidden></section>
                     <?php foreach ($wizardStepKeys as $index => $key): ?>
                         <?php
@@ -225,7 +224,8 @@ $showStepper = !$isMobileVerification;
                 submitForm: '<?php echo $basePath; ?>/backend-integration/api/submit-form.php',
                 getSchools: '<?php echo $basePath; ?>/backend-integration/api/get-schools.php',
                 getUnits: '<?php echo $basePath; ?>/backend-integration/api/get-units.php',
-                getEmploymentOptions: '<?php echo $basePath; ?>/backend-integration/api/get-employment-options.php'
+                getEmploymentOptions: '<?php echo $basePath; ?>/backend-integration/api/get-employment-options.php',
+                getFamilyMemberEmployment: '<?php echo $basePath; ?>/backend-integration/api/get-family-member-employment.php'
             },
             validation: {
                 mobilePattern: '^[6-9]\\d{9}$',

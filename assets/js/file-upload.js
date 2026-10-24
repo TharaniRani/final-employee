@@ -235,6 +235,8 @@ window.HRMS_FileUpload = (function() {
         const replaceBtn = container.querySelector('.file-upload-replace');
         const actions = container.querySelector('.file-upload-actions');
         let viewBtn = container.querySelector('.file-upload-view');
+        let existingPanel = null;
+        let existingDocument = null;
 
         if (actions && !viewBtn) {
             viewBtn = document.createElement('button');
@@ -252,6 +254,8 @@ window.HRMS_FileUpload = (function() {
         function updateUI(file) {
             currentFile = file;
             if (file) {
+                zone.hidden = false;
+                if (existingPanel) existingPanel.hidden = true;
                 zone.classList.add('has-file');
                 zone.querySelector('.file-upload-text').textContent = file.name;
                 zone.querySelector('.file-upload-hint').textContent = file.pendingUpload
@@ -268,6 +272,10 @@ window.HRMS_FileUpload = (function() {
                 zone.querySelector('.file-upload-hint').textContent = 'PDF, JPG, PNG up to 5MB';
                 if (info) info.style.display = 'none';
                 if (viewBtn) viewBtn.disabled = true;
+                if (existingPanel) {
+                    existingPanel.hidden = !existingDocument;
+                }
+                zone.hidden = !!existingDocument;
             }
         }
 
@@ -363,6 +371,57 @@ window.HRMS_FileUpload = (function() {
 
         function handleReplace() {
             input.click();
+        }
+
+        function setExistingDocument(filename, url) {
+            if (!filename || !url) return;
+            existingDocument = { filename, url };
+            if (!existingPanel) {
+                existingPanel = document.createElement('div');
+                existingPanel.className = 'existing-document-panel';
+                const link = document.createElement('a');
+                link.className = 'existing-document-filename existing-document-view';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.setAttribute('aria-label', 'Preview existing document in a new tab');
+                const eye = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                eye.setAttribute('width', '18');
+                eye.setAttribute('height', '18');
+                eye.setAttribute('viewBox', '0 0 24 24');
+                eye.setAttribute('fill', 'none');
+                eye.setAttribute('stroke', 'currentColor');
+                eye.setAttribute('stroke-width', '2');
+                eye.setAttribute('aria-hidden', 'true');
+                const eyeOutline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                eyeOutline.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
+                const eyePupil = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                eyePupil.setAttribute('cx', '12');
+                eyePupil.setAttribute('cy', '12');
+                eyePupil.setAttribute('r', '3');
+                eye.append(eyeOutline, eyePupil);
+                const filenameText = document.createElement('span');
+                filenameText.className = 'existing-document-filename-text';
+                link.append(eye, filenameText);
+                const replace = document.createElement('button');
+                replace.type = 'button';
+                replace.className = 'btn btn-sm btn-secondary existing-document-replace';
+                replace.textContent = 'Replace';
+                replace.addEventListener('click', handleReplace);
+                existingPanel.append(link, replace);
+                container.insertBefore(existingPanel, zone);
+            }
+            existingPanel.querySelector('.existing-document-filename-text').textContent = filename;
+            const existingLink = existingPanel.querySelector('.existing-document-view');
+            existingLink.href = url;
+            existingLink.setAttribute('aria-label', `Preview ${filename} in a new tab`);
+            existingLink.target = '_blank';
+            existingLink.rel = 'noopener noreferrer';
+            existingPanel.querySelector('.existing-document-replace')
+                .setAttribute('aria-label', `Choose a replacement for ${filename}`);
+            updateUI(currentFile);
+            if (container.id === 'resume-upload') {
+                window.HRMS_Validation?.clearError('resume');
+            }
         }
 
         // Event listeners
@@ -485,6 +544,7 @@ window.HRMS_FileUpload = (function() {
                     showError(container, 'Could not restore this file from browser storage. Please select it again.');
                 });
             },
+            setExistingDocument,
             clear() {
                 handleRemove();
             },
@@ -516,6 +576,13 @@ window.HRMS_FileUpload = (function() {
             errorEl.style.display = 'none';
         }
         container.classList.remove('has-error');
+    }
+
+    function setExistingDocument(containerId, filename, url) {
+        const container = document.getElementById(containerId);
+        if (!container || !filename || !url) return;
+        const uploadZone = initializedZones.get(container);
+        if (uploadZone) uploadZone.setExistingDocument(filename, url);
     }
 
     // Initialize all file upload zones on page
@@ -570,6 +637,7 @@ window.HRMS_FileUpload = (function() {
         getFileName(fileId) {
             return documentNames.get(String(fileId)) || '';
         },
+        setExistingDocument,
         uploadPendingFiles,
         clearPendingFiles,
         initAll,

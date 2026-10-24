@@ -38,7 +38,7 @@ window.HRMS_Validation = (function() {
             message: 'Select an alumni school'
         },
         resume_file_id: {
-            requiredIf: (state) => true, // Always required for job application
+            requiredIf: (state) => !state.personal_basic?.resume_existing_document_available,
             message: 'Upload your resume'
         },
 
@@ -75,14 +75,26 @@ window.HRMS_Validation = (function() {
         // Aadhaar & PAN
         aadhaar_name: { required: true, minLength: 2, message: 'Enter name as per Aadhaar' },
         aadhaar_number: { required: true, pattern: patterns.aadhaarPattern, message: 'Enter a valid 12-digit Aadhaar number' },
-        aadhaar_file_id: { required: true, message: 'Upload Aadhaar card' },
+        aadhaar_file_id: {
+            requiredIf: (state) => !state.aadhaar_pan?.aadhaar?.existing_document_available,
+            message: 'Upload Aadhaar card'
+        },
         pan_number: { required: true, pattern: patterns.panPattern, message: 'Enter a valid PAN (e.g., ABCDE1234F)' },
-        pan_file_id: { required: true, message: 'Upload PAN card' },
+        pan_file_id: {
+            requiredIf: (state) => !state.aadhaar_pan?.pan?.existing_document_available,
+            message: 'Upload PAN card'
+        },
         aadhaar_pan_linked: { required: true, message: 'Select whether Aadhaar and PAN are linked' },
 
         // Personal Details
-        photo_file_id: { required: true, message: 'Upload your photograph' },
-        signature_file_id: { required: true, message: 'Upload your signature' },
+        photo_file_id: {
+            requiredIf: (state) => !state.personal_details?.photo_existing_document_available,
+            message: 'Upload your photograph'
+        },
+        signature_file_id: {
+            requiredIf: (state) => !state.personal_details?.signature_existing_document_available,
+            message: 'Upload your signature'
+        },
         date_of_birth: {
             required: true,
             custom: (value) => {
@@ -138,7 +150,7 @@ window.HRMS_Validation = (function() {
         family_working: { required: true, message: 'Select yes/no' },
         'family_working_details.*.tmss_id': {
             required: true,
-            message: 'Enter TMSS Employee ID'
+            message: 'Enter MSS Employee ID'
         },
         'family_working_details.*.name': {
             required: true,
@@ -148,10 +160,10 @@ window.HRMS_Validation = (function() {
             required: true,
             message: 'Select unit'
         },
-        // 'family_working_details.*.designation': {
-        //     required: true,
-        //     message: 'Enter designation'
-        // },
+        'family_working_details.*.designation': {
+            required: true,
+            message: 'Enter designation'
+        },
         family_studying: { required: true, message: 'Select yes/no' },
         'family_studying_details.*.name': {
             required: true,
@@ -180,7 +192,10 @@ window.HRMS_Validation = (function() {
             },
             message: 'Enter valid 4-digit year of completion'
         },
-        'education.*.certificate_file_id': { required: true, message: 'Upload certificate' },
+        'education.*.certificate_file_id': {
+            requiredIf: (entry) => !entry.existing_certificate_available,
+            message: 'Upload certificate'
+        },
         'education.*.skilled_in': {
             requiredIf: (entry) => entry.qualification_type?.original_value === 'Others',
             message: 'Enter skills (required for Grade 4/Others)'
@@ -310,29 +325,32 @@ window.HRMS_Validation = (function() {
             return { valid: true };
         }
 
+        const hasCorrectedValue = value &&
+            typeof value === 'object' &&
+            value.verification === 'wrong';
+        const effectiveValue = hasCorrectedValue
+            ? value.corrected_value
+            : value && typeof value === 'object' && value.original_value !== undefined
+                ? value.original_value
+                : value;
+
+        if (hasCorrectedValue && (effectiveValue === null || effectiveValue === undefined || effectiveValue === '')) {
+            return { valid: false, message: 'Enter the corrected value for this field' };
+        }
+
         // Required check
         if (rule.required || rule.requiredIf) {
-            if (value === undefined || value === null || value === '') {
+            if (effectiveValue === undefined || effectiveValue === null || effectiveValue === '') {
                 return { valid: false, message: rule.message };
-            }
-            // For objects with original_value
-            if (typeof value === 'object' && value.original_value !== undefined) {
-                if (value.original_value === '' || value.original_value === null) {
-                    return { valid: false, message: rule.message };
-                }
             }
         }
 
         // If not required and empty, valid
-        if (!rule.required && (!value || (typeof value === 'object' && !value.original_value))) {
+        if (!rule.required && !effectiveValue) {
             return { valid: true };
         }
 
-        // Get the actual value to validate
-        let val = value;
-        if (typeof value === 'object' && value.original_value !== undefined) {
-            val = value.original_value;
-        }
+        const val = effectiveValue;
 
         // String validations
         if (typeof val === 'string') {
@@ -535,7 +553,8 @@ window.HRMS_Validation = (function() {
                     const fwErrors = validateArrayItems('referral.family_working_details', {
                         tmss_id: rules['family_working_details.*.tmss_id'],
                         name: rules['family_working_details.*.name'],
-                        unit: rules['family_working_details.*.unit']
+                        unit: rules['family_working_details.*.unit'],
+                        designation: rules['family_working_details.*.designation']
                     }, state);
                     errors.push(...fwErrors);
                 }
@@ -603,24 +622,37 @@ window.HRMS_Validation = (function() {
     }
 
     // UI Helpers
-    function showError(fieldId, message) {
+    function showError(fieldId, message, controlId = fieldId) {
         const errorEl = document.getElementById(`${fieldId}-error`);
         const employmentReplacement = fieldId.startsWith('employment-')
             ? document.getElementById(`${fieldId}-replacement`)
             : null;
         const inputEl = employmentReplacement && !employmentReplacement.hidden
             ? document.getElementById(`${fieldId}-updated`)
-            : document.getElementById(fieldId);
+            : document.getElementById(controlId);
 
         if (errorEl) {
             errorEl.textContent = message;
             errorEl.style.display = 'flex';
         }
-        if (inputEl) {
+        if (inputEl?.classList.contains('file-upload')) {
+            const uploadZone = inputEl.querySelector('.file-upload-zone');
+            inputEl.classList.add('error');
+            if (uploadZone) {
+                uploadZone.classList.add('error');
+                uploadZone.setAttribute('aria-invalid', 'true');
+                uploadZone.setAttribute('aria-describedby', `${fieldId}-error`);
+            }
+        } else if (inputEl) {
             inputEl.classList.add('error');
             inputEl.classList.remove('success');
             inputEl.setAttribute('aria-invalid', 'true');
             inputEl.setAttribute('aria-describedby', `${fieldId}-error`);
+            inputEl.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.classList.add('error');
+                radio.setAttribute('aria-invalid', 'true');
+                radio.setAttribute('aria-describedby', `${fieldId}-error`);
+            });
         }
     }
 
@@ -644,11 +676,25 @@ window.HRMS_Validation = (function() {
         const errorFieldAliases = {
             is_alumni: 'alumni',
             resume_file_id: 'resume',
+            aadhaar_file_id: 'aadhaar-upload',
+            pan_file_id: 'pan-upload',
+            photo_file_id: 'photo',
+            signature_file_id: 'signature',
+            bed_file_id: 'bed-upload',
+            driving_license_file_id: 'driving-license',
+            police_verification_file_id: 'police-verification',
             nok_emergency_contact: 'emergency-contact',
             education: 'education',
             declaration: 'declaration-checkbox',
             terms_accepted: 'terms-checkbox',
             experience_not_applicable: 'experience-na'
+        };
+        const errorControlAliases = {
+            resume_file_id: 'resume-upload',
+            photo_file_id: 'photo-upload',
+            signature_file_id: 'signature-upload',
+            driving_license_file_id: 'driving-license-upload',
+            police_verification_file_id: 'police-verification-upload'
         };
 
         errors.forEach(error => {
@@ -659,7 +705,8 @@ window.HRMS_Validation = (function() {
             // Convert path to field ID
             const fieldId = errorFieldAliases[error.path] ||
                 error.path.replace(/\./g, '-').replace(/\[(\d+)\]/g, '-$1').replace(/_/g, '-');
-            showError(fieldId, error.message);
+            const controlId = errorControlAliases[error.path] || fieldId;
+            showError(fieldId, error.message, controlId);
         });
     }
 
@@ -691,8 +738,8 @@ window.HRMS_Validation = (function() {
             'referral.family_working_details': {
                 tmss_id: '[name="family_working_tmss_id[]"]',
                 name: '[name="family_working_name[]"]',
-                unit: '[name="family_working_unit[]"]'
-                // designation: '[name="family_working_designation[]"]'
+                unit: '[name="family_working_unit[]"]',
+                designation: '[name="family_working_designation[]"]'
             },
             'referral.family_studying_details': {
                 name: '[name="family_studying_name[]"]',
@@ -735,7 +782,9 @@ window.HRMS_Validation = (function() {
     function clearAllErrors(formElement) {
         if (!formElement) return;
         const errorElements = formElement.querySelectorAll('.form-error');
-        const inputElements = formElement.querySelectorAll('.form-input, .form-select, .form-textarea, .employment-change-group');
+        const inputElements = formElement.querySelectorAll(
+            '.form-input, .form-select, .form-textarea, .employment-change-group, input[type="radio"], .file-upload, .file-upload-zone, [aria-invalid="true"]'
+        );
 
         errorElements.forEach(el => {
             el.textContent = '';

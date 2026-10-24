@@ -115,6 +115,24 @@ window.HRMS_ConditionalFields = (function() {
             clearOnHide: true
         },
         {
+            id: 'teacher-special-other-documents',
+            condition: (s) => {
+                const teacher = teacherStatus(s, 'is_teacher');
+                if (teacher === 'Yes') {
+                    return isTeacherUnit(s);
+                }
+                return teacher === 'No';
+            },
+            target: '#other-documents-section',
+            fields: [
+                'employee_id',
+                'employment_details.unit',
+                'employment_details.designation',
+                'is_teacher'
+            ],
+            clearOnHide: false
+        },
+        {
             id: 'bed-proposed-year',
             condition: (s) => {
                 return teacherStatus(s, 'is_teacher') === 'Yes' &&
@@ -157,6 +175,19 @@ window.HRMS_ConditionalFields = (function() {
         return typeof value === 'object' && value !== null
             ? value.original_value
             : value;
+    }
+
+    function employmentValue(state, field) {
+        const value = state.employment_details?.[field];
+        return String(
+            value && typeof value === 'object'
+                ? value.original_value ?? ''
+                : value ?? ''
+        ).trim().toLowerCase();
+    }
+
+    function isTeacherUnit(state) {
+        return ['prem vihar', 'shanthi sadan'].includes(employmentValue(state, 'unit'));
     }
 
     let initialized = false;

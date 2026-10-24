@@ -173,6 +173,30 @@
   flex-shrink: 0;
 }
 
+.validation-summary {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.validation-summary-list {
+  margin: 0;
+  padding-left: var(--spacing-5);
+}
+
+.validation-summary[hidden] {
+  display: none;
+}
+
+.file-upload.error .file-upload-zone,
+.file-upload-zone.error {
+  border-color: var(--color-error);
+  background-color: var(--color-error-light);
+}
+
+.file-upload.error .existing-document-panel {
+  border-color: var(--color-error);
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr;
@@ -949,6 +973,44 @@
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
   overflow-wrap: anywhere;
+}
+
+.existing-document-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-page);
+}
+
+.existing-document-filename {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.existing-document-filename:hover,
+.existing-document-filename:focus-visible {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.existing-document-filename svg {
+  flex: 0 0 auto;
+}
+
+.file-upload-zone[hidden],
+.existing-document-panel[hidden] {
+  display: none !important;
 }
 
 .existing-documents-summary {

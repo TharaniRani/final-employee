@@ -41,6 +41,7 @@ try {
     $employee['mobile'] = $_SESSION['verified_mobile'] ?? $employee['mobile'];
 
     $documents = getHrmsEmployeeDocuments($pdo, (int) $employeeId);
+    $existingDocuments = getHrmsExistingIdentityDocuments($pdo, (int) $employeeId);
     $legacyDocuments = getHrmsLegacyDocumentNames($pdo, (int) $employeeId);
     $employee['legacy_pg_degree_status'] = $employee['pg_degree_status'] ?? '';
     $employee['legacy_pg_degree_institution'] = $employee['pg_degree_institution'] ?? '';
@@ -50,6 +51,7 @@ try {
         'success' => true,
         'employee' => $employee,
         'documents' => $documents,
+        'existing_documents' => $existingDocuments,
         'legacy_documents' => $legacyDocuments
     ]);
 

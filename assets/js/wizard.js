@@ -29,6 +29,8 @@ window.HRMS_Wizard = (function() {
     let isRestoringDraft = false;
     let employeeDataReady = false;
     let localDraftSaveFailed = false;
+    let employeeEducationRows = [];
+    let approvedEmployeeDocumentIds = new Set();
 
     function init() {
         if (isInitialized || !wizard) return;
@@ -85,14 +87,19 @@ window.HRMS_Wizard = (function() {
 
             const employee = result.employee;
             employee.documents = Array.isArray(result.documents) ? result.documents : [];
+            approvedEmployeeDocumentIds = new Set(
+                employee.documents.map(document => String(document.id))
+            );
+            employeeEducationRows = Array.isArray(employee.education) ? employee.education : [];
             employee.legacy_documents = Array.isArray(result.legacy_documents) ? result.legacy_documents : [];
+            employee.existing_documents = result.existing_documents || {};
             window.HRMS_FileUpload.setDocumentMetadata(employee.documents);
             isRestoringDraft = true;
             state.initFromEmployee(employee);
             state.loadDraft(state.getState());
             populateEmployeeFields(employee);
             syncPermanentLocationFromCurrent();
-            displayLegacyDocumentNames(employee.legacy_documents);
+            displayExistingIdentityDocuments(employee.existing_documents);
             displayLegacyAdditionalDetails(employee);
             employeeDataLoaded = true;
             isRestoringDraft = false;
@@ -107,6 +114,7 @@ window.HRMS_Wizard = (function() {
         } finally {
             isRestoringDraft = true;
             restored = loadDraft(false);
+            if (restored) restoreExistingEducationDocuments();
             isRestoringDraft = false;
             if (!restored) {
                 syncNextOfKinControls();
@@ -115,6 +123,7 @@ window.HRMS_Wizard = (function() {
             employeeDataReady = employeeDataLoaded;
             if (employeeDataReady) persistLocalDraft();
             state.markClean();
+            window.HRMS_Review?.updateReview();
         }
     }
 
@@ -133,6 +142,10 @@ window.HRMS_Wizard = (function() {
             permanent_address: ['perm-address-line1'],
             permanent_address_line2: ['perm-address-line2'],
             permanent_address_line3: ['perm-address-line3'],
+            permanent_city: ['perm_city'],
+            permanent_pincode: ['perm_pincode'],
+            permanent_state: ['perm_state'],
+            permanent_country: ['perm_country'],
             same_as_permanent: ['same_as_permanent'],
             date_of_birth: ['date-of-birth'],
             gender: ['gender'],
@@ -204,56 +217,14 @@ window.HRMS_Wizard = (function() {
         populateNextOfKinOptions(employee);
     }
 
-    function displayLegacyDocumentNames(documents) {
-        const staticTargets = {
-            'aadhaar': '#aadhaar-upload',
-            'pan': '#pan-upload',
-            'photo': '#photo-upload',
-            'resume': '#resume-upload',
-            'signature': '#signature-upload'
-        };
-        const educationUploads = Array.from(document.querySelectorAll('.education-certificate-upload'));
-        const experienceLetterUploads = Array.from(document.querySelectorAll('.experience-letter-upload'));
-        const experiencePayslipUploads = Array.from(document.querySelectorAll('.experience-payslip-upload'));
-        const unplaced = [];
-
-        (documents || []).forEach((item, index) => {
-            const type = String(item.type || '').toLowerCase();
-            let target = null;
-            if (type === 'aadhaar') target = document.querySelector(staticTargets.aadhaar);
-            else if (type === 'pan') target = document.querySelector(staticTargets.pan);
-            else if (type === 'photo') target = document.querySelector(staticTargets.photo);
-            else if (type === 'resume') target = document.querySelector(staticTargets.resume);
-            else if (type === 'signature') target = document.querySelector(staticTargets.signature);
-            else if (type === 'education certificate') target = educationUploads.shift() || null;
-            else if (type === 'experience letter') target = experienceLetterUploads.shift() || null;
-            else if (type === 'experience pay slip') target = experiencePayslipUploads.shift() || null;
-
-            if (target) {
-                const note = document.createElement('p');
-                note.className = 'existing-document-note';
-                note.textContent = `Previously recorded: ${item.name}`;
-                target.appendChild(note);
-            } else {
-                unplaced.push(item);
-            }
+    function displayExistingIdentityDocuments(existingDocuments) {
+        ['aadhaar', 'pan', 'photo', 'resume', 'signature'].forEach(type => {
+            const document = existingDocuments?.[type];
+            if (!document?.exists || !document.filename) return;
+            const url = `${config.basePath}/backend-integration/api/view-existing-document.php?type=${encodeURIComponent(type)}`;
+            const fieldId = type === 'resume' ? 'resume-upload' : `${type}-upload`;
+            window.HRMS_FileUpload.setExistingDocument(fieldId, document.filename, url);
         });
-
-        if (unplaced.length) {
-            const container = document.getElementById('existing-legacy-documents');
-            if (container) {
-                const heading = document.createElement('strong');
-                heading.textContent = 'Other documents recorded in the employee database';
-                const list = document.createElement('ul');
-                unplaced.forEach(item => {
-                    const entry = document.createElement('li');
-                    entry.textContent = `${item.type}: ${item.name}`;
-                    list.appendChild(entry);
-                });
-                container.replaceChildren(heading, list);
-                container.hidden = false;
-            }
-        }
     }
 
     function displayLegacyAdditionalDetails(employee) {
@@ -388,12 +359,14 @@ window.HRMS_Wizard = (function() {
                 console.warn('Ignoring locally saved draft with invalid form data or step.');
                 return false;
             }
+
             if (String(draft.form_data.verified_mobile || '').replace(/\D/g, '') !==
                 String(config.verifiedMobile).replace(/\D/g, '')) {
                 console.warn('Ignoring locally saved draft for a different verified mobile number.');
                 return false;
             }
 
+            clearUnapprovedDocumentReferences(draft.form_data);
             const savedExperience = draft.form_data.work_experience;
             const employeeExperience = state.get('work_experience.entries') || [];
             if (draft.version !== 2 &&
@@ -403,7 +376,6 @@ window.HRMS_Wizard = (function() {
                 savedExperience.not_applicable = false;
             }
 
-            clearLegacyCopiedPermanentLocation(draft.form_data);
             currentStepIndex = draftStepIndex;
             currentStep = stepKeys[currentStepIndex];
             state.loadDraft(mergeDraftWithCurrent(draft.form_data, state.toJSON()));
@@ -423,11 +395,68 @@ window.HRMS_Wizard = (function() {
         }
     }
 
+    function clearUnapprovedDocumentReferences(value) {
+        if (!value || typeof value !== 'object') return;
+
+        Object.entries(value).forEach(([key, child]) => {
+            if (/(?:^|_)file_id$/.test(key) || key === 'file_id') {
+                if (typeof child === 'number' ||
+                    typeof child === 'string' && /^\d+$/.test(child)) {
+                    if (!approvedEmployeeDocumentIds.has(String(child))) {
+                        value[key] = null;
+                    }
+                }
+                return;
+            }
+
+            if (child && typeof child === 'object') {
+                clearUnapprovedDocumentReferences(child);
+            }
+        });
+    }
+
+    function restoreExistingEducationDocuments() {
+        const currentEducation = state.get('education') || [];
+        if (!currentEducation.length) return;
+
+        const mergedEducation = currentEducation.map(entry => {
+            const rowId = Number(entry.existing_row_id) ||
+                Number(String(entry.id || '').match(/^db-education-(\d+)$/)?.[1]);
+            const existing = employeeEducationRows.find(row => Number(row.id) === rowId);
+            if (!existing) {
+                return {
+                    ...entry,
+                    existing_certificate_available: false,
+                    legacy_certificate_name: ''
+                };
+            }
+
+            return {
+                ...entry,
+                existing_row_id: Number(existing.id),
+                existing_certificate_available: !!existing.has_certificate,
+                legacy_certificate_name: existing.has_certificate ? existing.certificate_name || '' : ''
+            };
+        });
+
+        state.set('education', mergedEducation);
+    }
+
     function syncPermanentLocationFromCurrent() {
         if (state.get('address.same_as_permanent.original_value') !== 'Yes') return;
 
-        ['city', 'pincode', 'state', 'country'].forEach(field => {
-            const value = state.get(`address.current.${field}`);
+        ['address_line1', 'address_line2', 'address_line3', 'city', 'pincode', 'state', 'country'].forEach(field => {
+            const currentValue = state.get(`address.current.${field}`);
+            const currentText = currentValue?.verification === 'wrong' &&
+                currentValue.corrected_value !== null &&
+                currentValue.corrected_value !== undefined &&
+                currentValue.corrected_value !== ''
+                ? currentValue.corrected_value
+                : currentValue?.original_value;
+            const existingPermanentValue = state.get(`address.permanent.${field}`);
+            const value = currentText !== null && currentText !== undefined && String(currentText).trim() !== ''
+                ? currentValue
+                : existingPermanentValue;
             state.set(`address.permanent.${field}`, value);
 
             const control = document.querySelector(`[name="perm_${field}"]`);
@@ -446,26 +475,6 @@ window.HRMS_Wizard = (function() {
         });
     }
 
-    function clearLegacyCopiedPermanentLocation(formData) {
-        const address = formData.address;
-        if (address?.same_as_permanent?.original_value !== 'No') return;
-
-        [
-            'address_line1', 'address_line2', 'address_line3',
-            'city', 'pincode', 'state', 'country'
-        ].forEach(field => {
-            const current = address.current?.[field];
-            const permanent = address.permanent?.[field];
-            const currentValue = String(current?.original_value || '').trim();
-            const permanentValue = String(permanent?.original_value || '').trim();
-            if (!currentValue || currentValue.toLocaleLowerCase() !== permanentValue.toLocaleLowerCase()) return;
-
-            permanent.original_value = '';
-            permanent.verification = 'pending';
-            permanent.corrected_value = null;
-        });
-    }
-
     function mergeDraftWithCurrent(draftValue, currentValue) {
         if (draftValue === undefined) return currentValue;
         if (draftValue === null || draftValue === '') {
@@ -481,6 +490,12 @@ window.HRMS_Wizard = (function() {
         if (typeof draftValue === 'object') {
             const merged = { ...(currentValue && typeof currentValue === 'object' && !Array.isArray(currentValue) ? currentValue : {}) };
             Object.entries(draftValue).forEach(([key, value]) => {
+                if (key === 'existing_document_available' ||
+                    key === 'existing_document_name' ||
+                    key === 'existing_certificate_available' ||
+                    key === 'legacy_certificate_name') {
+                    return;
+                }
                 merged[key] = mergeDraftWithCurrent(value, merged[key]);
             });
             return merged;
@@ -632,18 +647,15 @@ window.HRMS_Wizard = (function() {
     }
 
     function validateCurrentStep() {
+        const currentStepElement = document.getElementById(`step-${currentStep}`);
+        validation.clearAllErrors(currentStepElement);
+
         // Validate current step
         const errors = validation.validateStep(currentStep, state.getState());
 
         if (errors.length > 0) {
             validation.showErrors(errors);
-
-            // Focus first error
-            const firstError = document.querySelector('.form-input.error, .form-select.error, .form-textarea.error');
-            if (firstError) {
-                firstError.focus();
-                firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
+            showValidationSummary(currentStepElement, errors);
 
             // Show toast
             showToast('error', 'Validation Error', `Please fix ${errors.length} error(s) before continuing.`);
@@ -658,7 +670,7 @@ window.HRMS_Wizard = (function() {
         }
 
         // Clear errors on success
-        validation.clearAllErrors(document.getElementById(`step-${currentStep}`));
+        showValidationSummary(currentStepElement, []);
 
         // Remove error from stepper
         const currentStepperItem = document.querySelector(`.stepper-item[data-step="${currentStep}"]`);
@@ -667,6 +679,46 @@ window.HRMS_Wizard = (function() {
         }
 
         return true;
+    }
+
+    function showValidationSummary(stepElement, errors) {
+        if (!stepElement) return;
+
+        const form = stepElement.querySelector('form');
+        if (!form) return;
+
+        let summary = form.querySelector('.validation-summary');
+        if (!summary) {
+            summary = document.createElement('div');
+            summary.className = 'alert alert-error validation-summary';
+            summary.tabIndex = -1;
+            summary.setAttribute('role', 'alert');
+            summary.setAttribute('aria-live', 'assertive');
+
+            const content = document.createElement('div');
+            content.className = 'alert-content';
+            const title = document.createElement('p');
+            title.className = 'alert-title';
+            title.textContent = 'Please correct these items before continuing:';
+            const list = document.createElement('ul');
+            list.className = 'alert-message validation-summary-list';
+            content.append(title, list);
+            summary.appendChild(content);
+            form.insertBefore(summary, form.firstChild);
+        }
+
+        const list = summary.querySelector('.validation-summary-list');
+        list.replaceChildren(...errors.map(error => {
+            const item = document.createElement('li');
+            item.textContent = error.message;
+            return item;
+        }));
+        summary.hidden = errors.length === 0;
+
+        if (errors.length > 0) {
+            summary.focus();
+            summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     }
 
     function validateAndProceed() {

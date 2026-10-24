@@ -9,6 +9,7 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/submission-serializer.php';
 require_once __DIR__ . '/../config/submission-staging.php';
+require_once __DIR__ . '/../config/hrms-repository.php';
 
 session_start();
 
@@ -23,27 +24,18 @@ if (!$csrfToken || $csrfToken !== ($_SESSION['csrf_token'] ?? '')) {
 // Verify employee is authenticated
 $employeeId = $_SESSION['verified_employee_id'] ?? '';
 if (empty($employeeId)) {
+    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Not authenticated']);
     exit;
 }
 
 // Get JSON input
 $input = json_decode(file_get_contents('php://input'), true);
-$formData = $input['form_data'] ?? [];
+$formData = is_array($input) ? ($input['form_data'] ?? []) : [];
 
-if (empty($formData)) {
-    echo json_encode(['success' => false, 'message' => 'No form data provided']);
-    exit;
-}
-
-// Server-side validation
-$validationErrors = validateFormData($formData);
-if (!empty($validationErrors)) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Validation failed',
-        'errors' => $validationErrors
-    ]);
+if (!is_array($formData) || empty($formData)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'The form data was empty or invalid. Refresh the page and try again.']);
     exit;
 }
 
@@ -51,6 +43,19 @@ try {
     $pdo = getDatabaseConnection();
 
     $employeeId = (int) $employeeId;
+    $existingDocuments = getHrmsExistingIdentityDocuments($pdo, $employeeId);
+    $existingEducationRows = getHrmsEducationRows($pdo, $employeeId);
+    $validationErrors = validateFormData($formData, $existingDocuments, $existingEducationRows);
+    if (!empty($validationErrors)) {
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Please fix the highlighted form items and try submitting again.',
+            'errors' => $validationErrors
+        ]);
+        exit;
+    }
+
     $mobile = (string) ($_SESSION['verified_mobile'] ?? '');
     $submittedAt = date('c');
     $pdo->beginTransaction();
@@ -174,16 +179,35 @@ try {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    error_log("Database error in submit-form: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Database error']);
-} catch (Exception $e) {
+    $supportReference = 'SUB-' . strtoupper(bin2hex(random_bytes(4)));
+    error_log("Database error in submit-form [{$supportReference}]: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'We could not save your submission because of a server database issue. No permanent employee records were changed. Please try again; if the problem continues, contact HR with the support reference below.',
+        'support_reference' => $supportReference
+    ]);
+} catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    error_log("Error in submit-form: " . $e->getMessage());
-    echo json_encode(['success' => false, 'message' => 'Submission failed']);
+    $supportReference = 'SUB-' . strtoupper(bin2hex(random_bytes(4)));
+    error_log("Unexpected error in submit-form [{$supportReference}]: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'We could not complete your submission because of an unexpected server issue. No permanent employee records were changed. Please try again; if the problem continues, contact HR with the support reference below.',
+        'support_reference' => $supportReference
+    ]);
 }
 
-function validateFormData($data) {
+function validateFormData(array $data, array $existingDocuments = [], array $existingEducationRows = []): array
+{
     $errors = [];
+    $existingEducationCertificates = [];
+    foreach ($existingEducationRows as $row) {
+        if (!empty($row['has_certificate'])) {
+            $existingEducationCertificates[(string) ($row['id'] ?? '')] = true;
+        }
+    }
 
     // Personal Basic
     if (empty($data['personal_basic']['full_name']['original_value'])) {
@@ -233,13 +257,15 @@ function validateFormData($data) {
     if (empty($data['aadhaar_pan']['aadhaar']['number']['original_value']) || !preg_match('/^\d{12}$/', $data['aadhaar_pan']['aadhaar']['number']['original_value'])) {
         $errors[] = ['field' => 'aadhaar_pan.aadhaar.number', 'message' => 'Valid Aadhaar number is required'];
     }
-    if (empty($data['aadhaar_pan']['aadhaar']['file_id'])) {
+    if (empty($data['aadhaar_pan']['aadhaar']['file_id']) &&
+        empty($existingDocuments['aadhaar']['exists'])) {
         $errors[] = ['field' => 'aadhaar_pan.aadhaar.file_id', 'message' => 'Aadhaar document is required'];
     }
     if (empty($data['aadhaar_pan']['pan']['number']['original_value']) || !preg_match('/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/', $data['aadhaar_pan']['pan']['number']['original_value'])) {
         $errors[] = ['field' => 'aadhaar_pan.pan.number', 'message' => 'Valid PAN is required'];
     }
-    if (empty($data['aadhaar_pan']['pan']['file_id'])) {
+    if (empty($data['aadhaar_pan']['pan']['file_id']) &&
+        empty($existingDocuments['pan']['exists'])) {
         $errors[] = ['field' => 'aadhaar_pan.pan.file_id', 'message' => 'PAN document is required'];
     }
     if (empty($data['aadhaar_pan']['aadhaar_pan_linked']['original_value'])) {
@@ -247,11 +273,17 @@ function validateFormData($data) {
     }
 
     // Personal Details
-    if (empty($data['personal_details']['photo_file_id'])) {
+    if (empty($data['personal_details']['photo_file_id']) &&
+        empty($existingDocuments['photo']['exists'])) {
         $errors[] = ['field' => 'personal_details.photo_file_id', 'message' => 'Photograph is required'];
     }
-    if (empty($data['personal_details']['signature_file_id'])) {
+    if (empty($data['personal_details']['signature_file_id']) &&
+        empty($existingDocuments['signature']['exists'])) {
         $errors[] = ['field' => 'personal_details.signature_file_id', 'message' => 'Signature is required'];
+    }
+    if (empty($data['personal_basic']['resume_file_id']) &&
+        empty($existingDocuments['resume']['exists'])) {
+        $errors[] = ['field' => 'personal_basic.resume_file_id', 'message' => 'Resume is required'];
     }
     if (empty($data['personal_details']['date_of_birth']['original_value'])) {
         $errors[] = ['field' => 'personal_details.date_of_birth', 'message' => 'Date of birth is required'];
@@ -376,7 +408,12 @@ function validateFormData($data) {
             if (empty($edu['year_of_completion']['original_value'])) {
                 $errors[] = ['field' => "education[$index].year_of_completion", 'message' => "Qualification $index year is required"];
             }
-            if (empty($edu['certificate_file_id'])) {
+            $existingRowId = filter_var($edu['existing_row_id'] ?? null, FILTER_VALIDATE_INT, [
+                'options' => ['min_range' => 1]
+            ]);
+            $hasExistingCertificate = $existingRowId !== false &&
+                isset($existingEducationCertificates[(string) $existingRowId]);
+            if (empty($edu['certificate_file_id']) && !$hasExistingCertificate) {
                 $errors[] = ['field' => "education[$index].certificate_file_id", 'message' => "Qualification $index certificate is required"];
             }
             if (($edu['qualification_type']['original_value'] ?? '') === 'Others' && empty($edu['skilled_in']['original_value'])) {

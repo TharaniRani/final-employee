@@ -12,6 +12,9 @@ window.HRMS_Review = (function() {
 
     const reviewContainer = document.getElementById('review-summary');
     const submitBtn = document.getElementById('review-submit');
+    const submissionError = document.getElementById('submission-error');
+    const submissionErrorMessage = document.getElementById('submission-error-message');
+    const submissionErrorList = document.getElementById('submission-error-list');
     const successScreen = document.getElementById('step-success');
     const downloadBtn = document.getElementById('download-acknowledgement');
     const newFormBtn = document.getElementById('start-new-form');
@@ -46,7 +49,8 @@ window.HRMS_Review = (function() {
 
         // Subscribe to state changes to update review
         state.subscribe((path) => {
-            if (path !== 'review' && !path.startsWith('_meta')) {
+            if (path !== 'review' &&
+                !(typeof path === 'string' && path.startsWith('_meta'))) {
                 updateReview();
             }
         });
@@ -69,7 +73,7 @@ window.HRMS_Review = (function() {
                     { key: 'personal_basic.email', label: 'Email', type: 'verification' },
                     { key: 'personal_basic.mobile_number', label: 'Mobile Number', type: 'verification' },
                     { key: 'personal_basic.is_alumni', label: 'Alumni Status', type: 'simple' },
-                    { key: 'personal_basic.alumni_school', label: 'Alumni School', type: 'simple', condition: (s) => s.personal_basic?.is_alumni === 'Yes' || s.personal_basic?.is_alumni?.original_value === 'Yes' },
+                    { key: 'personal_basic.alumni_school', label: 'Alumni School', type: 'simple', condition: (s) => getEffectiveValue(s.personal_basic?.is_alumni) === 'Yes' },
                     { key: 'personal_basic.resume_file_id', label: 'Resume', type: 'file' }
                 ]
             },
@@ -118,7 +122,7 @@ window.HRMS_Review = (function() {
                     { key: 'personal_details.date_of_birth', label: 'Date of Birth', type: 'verification' },
                     { key: 'personal_details.gender', label: 'Gender', type: 'verification' },
                     { key: 'personal_details.marital_status', label: 'Marital Status', type: 'verification' },
-                    { key: 'personal_details.spouse_name', label: 'Spouse Name', type: 'verification', condition: (s) => s.personal_details?.marital_status?.original_value === 'Married' },
+                    { key: 'personal_details.spouse_name', label: 'Spouse Name', type: 'verification', condition: (s) => getEffectiveValue(s.personal_details?.marital_status) === 'Married' },
                     { key: 'personal_details.father_name', label: "Father's Name", type: 'verification' },
                     { key: 'personal_details.mother_name', label: "Mother's Name", type: 'verification' },
                     { key: 'personal_details.blood_group', label: 'Blood Group', type: 'verification' }
@@ -130,8 +134,8 @@ window.HRMS_Review = (function() {
                 icon: 'person-heart',
                 fields: [
                     { key: 'next_of_kin.name_source', label: 'NOK Name Source', type: 'simple' },
-                    { key: 'next_of_kin.selected_name', label: 'Selected NOK', type: 'simple', condition: (s) => s.next_of_kin?.name_source?.original_value === 'select' },
-                    { key: 'next_of_kin.manual_name', label: 'Manual NOK Name', type: 'simple', condition: (s) => s.next_of_kin?.name_source?.original_value === 'manual' },
+                    { key: 'next_of_kin.selected_name', label: 'Selected NOK', type: 'simple', condition: (s) => getEffectiveValue(s.next_of_kin?.name_source) === 'select' },
+                    { key: 'next_of_kin.manual_name', label: 'Manual NOK Name', type: 'simple', condition: (s) => getEffectiveValue(s.next_of_kin?.name_source) === 'manual' },
                     { key: 'next_of_kin.contact', label: 'NOK Contact No.', type: 'verification' },
                     { key: 'next_of_kin.is_emergency', label: 'Is Emergency Contact', type: 'simple' },
                     { key: 'next_of_kin.address.address_line1', label: 'NOK Address Line 1', type: 'verification' },
@@ -151,9 +155,9 @@ window.HRMS_Review = (function() {
                     { key: 'referral.referred_by_name', label: 'Referred By', type: 'verification' },
                     // { key: 'referral.referral_source', label: 'Referral Source', type: 'simple' },
                     { key: 'referral.family_working', label: 'Family Members Working', type: 'simple' },
-                    { key: 'referral.family_working_details', label: 'Family Working Details', type: 'array', itemFields: ['tmss_id', 'name', 'unit'], condition: (s) => s.referral?.family_working === 'Yes' },
+                    { key: 'referral.family_working_details', label: 'Family Working Details', type: 'array', itemFields: ['tmss_id', 'name', 'unit', 'designation'], condition: (s) => getEffectiveValue(s.referral?.family_working) === 'Yes' },
                     { key: 'referral.family_studying', label: 'Family Members Studying', type: 'simple' },
-                    { key: 'referral.family_studying_details', label: 'Family Studying Details', type: 'array', itemFields: ['name', 'school', 'class'], condition: (s) => s.referral?.family_studying === 'Yes' }
+                    { key: 'referral.family_studying_details', label: 'Family Studying Details', type: 'array', itemFields: ['name', 'school', 'class'], condition: (s) => getEffectiveValue(s.referral?.family_studying) === 'Yes' }
                 ]
             },
             {
@@ -170,11 +174,11 @@ window.HRMS_Review = (function() {
                 icon: 'book',
                 fields: [
                     { key: 'teacher_documents.is_teacher', label: 'Are you a teacher?', type: 'simple' },
-                    { key: 'teacher_documents.bed_status', label: 'B.Ed Status', type: 'simple', condition: (s) => s.teacher_documents?.is_teacher?.original_value === 'Yes' },
-                    { key: 'teacher_documents.bed_institution', label: 'B.Ed Institution', type: 'simple', condition: (s) => s.teacher_documents?.is_teacher?.original_value === 'Yes' },
-                    { key: 'teacher_documents.bed_file_id', label: 'B.Ed Document', type: 'file', condition: (s) => s.teacher_documents?.is_teacher?.original_value === 'Yes' },
-                    { key: 'teacher_documents.bed_proposed_year', label: 'Proposed Graduation Year', type: 'simple', condition: (s) => s.teacher_documents?.is_teacher?.original_value === 'Yes' && s.teacher_documents?.bed_status?.original_value === 'Joined' },
-                    { key: 'teacher_documents.bed_graduation_year', label: 'Graduation Year', type: 'simple', condition: (s) => s.teacher_documents?.is_teacher?.original_value === 'Yes' && s.teacher_documents?.bed_status?.original_value === 'Completed' },
+                    { key: 'teacher_documents.bed_status', label: 'B.Ed Status', type: 'simple', condition: (s) => getEffectiveValue(s.teacher_documents?.is_teacher) === 'Yes' },
+                    { key: 'teacher_documents.bed_institution', label: 'B.Ed Institution', type: 'simple', condition: (s) => getEffectiveValue(s.teacher_documents?.is_teacher) === 'Yes' },
+                    { key: 'teacher_documents.bed_file_id', label: 'B.Ed Document', type: 'file', condition: (s) => getEffectiveValue(s.teacher_documents?.is_teacher) === 'Yes' },
+                    { key: 'teacher_documents.bed_proposed_year', label: 'Proposed Graduation Year', type: 'simple', condition: (s) => getEffectiveValue(s.teacher_documents?.is_teacher) === 'Yes' && getEffectiveValue(s.teacher_documents?.bed_status) === 'Joined' },
+                    { key: 'teacher_documents.bed_graduation_year', label: 'Graduation Year', type: 'simple', condition: (s) => getEffectiveValue(s.teacher_documents?.is_teacher) === 'Yes' && getEffectiveValue(s.teacher_documents?.bed_status) === 'Completed' },
                     { key: 'teacher_documents.driving_license_file_id', label: 'Driving License', type: 'file' },
                     { key: 'teacher_documents.police_verification_file_id', label: 'Police Verification', type: 'file' },
                     { key: 'teacher_documents.other_documents', label: 'Other Documents', type: 'document-array' }
@@ -221,7 +225,7 @@ window.HRMS_Review = (function() {
     function resolvePermanentAddress(formState) {
         if (!formState.address) return formState;
 
-        const sameAsPermanent = formState.address.same_as_permanent?.original_value;
+        const sameAsPermanent = getEffectiveValue(formState.address.same_as_permanent);
         if (sameAsPermanent !== 'Yes') return formState;
 
         // Create a deep clone to avoid mutating the original state
@@ -233,7 +237,8 @@ window.HRMS_Review = (function() {
             const permanent = resolved.address.permanent;
 
             ['address_line1', 'address_line2', 'address_line3', 'city', 'pincode', 'state', 'country'].forEach(field => {
-                if (current[field] && !permanent[field]?.original_value) {
+                const currentValue = getEffectiveValue(current[field]);
+                if (currentValue !== null && currentValue !== undefined && String(currentValue).trim() !== '') {
                     permanent[field] = { ...current[field] };
                 }
             });
@@ -257,9 +262,10 @@ window.HRMS_Review = (function() {
             const displayValue = field.type === 'simple'
                 ? getSimpleDisplayValue(value)
                 : field.type === 'employment'
-                    ? value?.change === 'Yes' ? value.updated_value : value?.original_value
+                    ? value?.change === 'Yes' ? value.updated_value : getEffectiveValue(value)
                     : value;
-            if (displayValue === undefined || displayValue === null || displayValue === '') {
+            if ((displayValue === undefined || displayValue === null || displayValue === '') &&
+                field.type !== 'file') {
                 // Still show empty fields for required ones
                 if (field.type !== 'array' && field.type !== 'education-array' && field.type !== 'experience-array' && field.type !== 'document-array') {
                     fieldsHtml += renderField(field.label, '', true);
@@ -281,7 +287,7 @@ window.HRMS_Review = (function() {
                     fieldsHtml += renderEmploymentField(field.label, value);
                     break;
                 case 'file':
-                    fieldsHtml += renderFileField(field.label, value);
+                    fieldsHtml += renderFileField(field.label, value, field.key);
                     break;
                 case 'array':
                     fieldsHtml += renderArrayField(field.label, value, field.itemFields);
@@ -335,7 +341,8 @@ window.HRMS_Review = (function() {
 
     function renderEmploymentField(label, value) {
         if (value?.change !== 'Yes') {
-            return renderField(label, value?.original_value || '', !value?.original_value);
+            const effectiveValue = getEffectiveValue(value) || '';
+            return renderField(label, effectiveValue, !effectiveValue);
         }
 
         return `
@@ -353,10 +360,25 @@ window.HRMS_Review = (function() {
         }
 
         if (value && typeof value === 'object') {
-            return value.original_value ?? '';
+            return getEffectiveValue(value) ?? '';
         }
 
         return value;
+    }
+
+    function getEffectiveValue(value) {
+        if (!value || typeof value !== 'object' || !Object.prototype.hasOwnProperty.call(value, 'original_value')) {
+            return value;
+        }
+
+        if (value.verification === 'wrong' &&
+            value.corrected_value !== null &&
+            value.corrected_value !== undefined &&
+            value.corrected_value !== '') {
+            return value.corrected_value;
+        }
+
+        return value.original_value;
     }
 
     function renderVerificationField(label, value, mask = false) {
@@ -364,7 +386,8 @@ window.HRMS_Review = (function() {
         const verification = value.verification || 'pending';
         const corrected = value.corrected_value;
 
-        let displayValue = mask ? maskValue(original) : original;
+        const effectiveValue = getEffectiveValue(value) || '';
+        let displayValue = mask ? maskValue(effectiveValue) : effectiveValue;
         let verificationHtml = '';
 
         if (verification !== 'pending') {
@@ -373,7 +396,7 @@ window.HRMS_Review = (function() {
 
         let correctionHtml = '';
         if (verification === 'wrong' && corrected) {
-            correctionHtml = `<div class="review-field-value correction">Corrected: ${escapeHtml(corrected)}</div>`;
+            correctionHtml = `<div class="review-field-value correction">Updated (original: ${escapeHtml(original || 'Not provided')})</div>`;
         }
 
         return `
@@ -388,16 +411,60 @@ window.HRMS_Review = (function() {
         `;
     }
 
-    function renderFileField(label, fileId) {
+    function renderFileField(label, fileId, statePath) {
         const fileName = fileId ? fileUpload.getFileName(fileId) : '';
         const displayName = fileName || 'Uploaded file';
+        const existingNamePaths = {
+            'aadhaar_pan.aadhaar.file_id': {
+                name: 'aadhaar_pan.aadhaar.existing_document_name',
+                available: 'aadhaar_pan.aadhaar.existing_document_available',
+                type: 'aadhaar'
+            },
+            'aadhaar_pan.pan.file_id': {
+                name: 'aadhaar_pan.pan.existing_document_name',
+                available: 'aadhaar_pan.pan.existing_document_available',
+                type: 'pan'
+            },
+            'personal_details.photo_file_id': {
+                name: 'personal_details.photo_existing_document_name',
+                available: 'personal_details.photo_existing_document_available',
+                type: 'photo'
+            },
+            'personal_details.signature_file_id': {
+                name: 'personal_details.signature_existing_document_name',
+                available: 'personal_details.signature_existing_document_available',
+                type: 'signature'
+            },
+            'personal_basic.resume_file_id': {
+                name: 'personal_basic.resume_existing_document_name',
+                available: 'personal_basic.resume_existing_document_available',
+                type: 'resume'
+            }
+        };
+        const existingDocument = existingNamePaths[statePath];
+        const hasExistingDocument = !fileId && existingDocument &&
+            state.get(existingDocument.available);
+        const existingName = hasExistingDocument
+            ? state.get(existingDocument.name)
+            : '';
+        const existingPreviewUrl = existingName && existingDocument
+            ? `${window.HRMS_CONFIG.basePath}/backend-integration/api/view-existing-document.php?type=${encodeURIComponent(existingDocument.type)}`
+            : '';
         return `
             <div class="review-field">
                 <span class="review-field-label">${escapeHtml(label)}</span>
                 <span class="review-field-value file">
                     ${fileId ?
                         `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 20 8 20 8"></polyline></svg> ${escapeHtml(displayName)}` :
-                        '<em>Not uploaded</em>'
+                        hasExistingDocument ?
+                            existingName
+                                ? `<a href="${escapeHtml(existingPreviewUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Preview ${escapeHtml(existingName)} in a new tab" title="Preview ${escapeHtml(existingName)}">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                ${escapeHtml(existingName)}
+                            </a>`
+                                : '<em>Existing document on file</em>'
+                            :
+                            '<em>Not provided</em>'
                     }
                     ${fileId ?
                         `<button type="button" class="btn btn-ghost btn-sm file-preview-btn" data-file-id="${escapeHtml(fileId)}" data-file-name="${escapeHtml(displayName)}" aria-label="Preview ${escapeHtml(displayName)}" title="Preview ${escapeHtml(displayName)}">
@@ -419,7 +486,7 @@ window.HRMS_Review = (function() {
             let itemHtml = `<div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--color-bg-page); border-radius: var(--radius-md);">`;
             itemHtml += `<strong>Entry ${index + 1}:</strong><br>`;
             itemFields.forEach(f => {
-                const val = item[f]?.original_value || item[f] || '';
+                const val = getEffectiveValue(item[f]) || '';
                 itemHtml += `<span class="review-field-label">${escapeHtml(f)}:</span> <span class="review-field-value">${escapeHtml(val) || '<em>Not provided</em>'}</span><br>`;
             });
             itemHtml += '</div>';
@@ -441,13 +508,15 @@ window.HRMS_Review = (function() {
 
         let itemsHtml = '';
         education.forEach((edu, index) => {
-            const qualType = edu.qualification_type?.original_value || '';
-            const qualName = edu.qualification_name?.original_value || '';
-            const institution = edu.institution?.original_value || '';
-            const year = edu.year_of_completion?.original_value || '';
+            const qualType = getEffectiveValue(edu.qualification_type) || '';
+            const qualName = getEffectiveValue(edu.qualification_name) || '';
+            const institution = getEffectiveValue(edu.institution) || '';
+            const year = getEffectiveValue(edu.year_of_completion) || '';
             const cert = edu.certificate_file_id
                 ? escapeHtml(fileUpload.getFileName(edu.certificate_file_id) || 'Uploaded file')
-                : '<em>Not uploaded</em>';
+                : edu.existing_certificate_available
+                    ? `<em>Existing document on file${edu.legacy_certificate_name ? `: ${escapeHtml(edu.legacy_certificate_name)}` : ''}</em>`
+                    : '<em>Not uploaded</em>';
 
             let itemHtml = `<div style="margin-bottom: 0.75rem; padding: 0.75rem; background: var(--color-bg-page); border-radius: var(--radius-md);">`;
             itemHtml += `<strong>Qualification ${index + 1}:</strong><br>`;
@@ -455,8 +524,8 @@ window.HRMS_Review = (function() {
             itemHtml += `<span class="review-field-label">Name:</span> <span class="review-field-value">${escapeHtml(qualName) || '<em>Not provided</em>'}</span><br>`;
 
             if (qualType === 'Others') {
-                const skilled = edu.skilled_in?.original_value || '';
-                const talents = edu.special_talents?.original_value || '';
+                const skilled = getEffectiveValue(edu.skilled_in) || '';
+                const talents = getEffectiveValue(edu.special_talents) || '';
                 itemHtml += `<span class="review-field-label">Skilled In:</span> <span class="review-field-value">${escapeHtml(skilled) || '<em>Not provided</em>'}</span><br>`;
                 itemHtml += `<span class="review-field-label">Special Talents:</span> <span class="review-field-value">${escapeHtml(talents) || '<em>Not provided</em>'}</span><br>`;
             }
@@ -483,11 +552,11 @@ window.HRMS_Review = (function() {
 
         let itemsHtml = '';
         entries.forEach((exp, index) => {
-            const company = exp.company?.original_value || '';
-            const designation = exp.designation?.original_value || '';
-            const start = exp.start_month?.original_value || '';
-            const end = exp.end_month?.original_value || '';
-            const details = exp.details?.original_value || '';
+            const company = getEffectiveValue(exp.company) || '';
+            const designation = getEffectiveValue(exp.designation) || '';
+            const start = getEffectiveValue(exp.start_month) || '';
+            const end = getEffectiveValue(exp.end_month) || '';
+            const details = getEffectiveValue(exp.details) || '';
             const letter = exp.experience_letter_file_id
                 ? escapeHtml(fileUpload.getFileName(exp.experience_letter_file_id) || 'Uploaded file')
                 : '<em>Not uploaded</em>';
@@ -522,7 +591,7 @@ window.HRMS_Review = (function() {
 
         let itemsHtml = '';
         documents.forEach((doc, index) => {
-            const title = doc.title?.original_value || '';
+            const title = getEffectiveValue(doc.title) || '';
             const fileId = doc.file_id;
             const fileName = fileId ? fileUpload.getFileName(fileId) : '';
             const displayName = fileName || 'Uploaded file';
@@ -877,6 +946,7 @@ window.HRMS_Review = (function() {
         const confirmed = await confirmSubmit();
         if (!confirmed) return;
 
+        clearSubmissionError();
         isSubmitting = true;
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner spinner-sm me-2"></span>Submitting...';
@@ -908,7 +978,7 @@ window.HRMS_Review = (function() {
             }
         } catch (error) {
             console.error('Submission error:', error);
-            showToast('error', 'Submission Failed', error.message || 'An error occurred. Please try again.');
+            showSubmissionError(error);
         } finally {
             isSubmitting = false;
             submitBtn.disabled = false;
@@ -920,6 +990,45 @@ window.HRMS_Review = (function() {
                 Submit Form
             `;
         }
+    }
+
+    function clearSubmissionError() {
+        if (submissionError) submissionError.style.display = 'none';
+        if (submissionErrorMessage) submissionErrorMessage.textContent = '';
+        if (submissionErrorList) {
+            submissionErrorList.replaceChildren();
+            submissionErrorList.hidden = true;
+        }
+    }
+
+    function showSubmissionError(error) {
+        if (!submissionError || !submissionErrorMessage || !submissionErrorList) {
+            showToast('error', 'Submission Failed', error.message || 'The submission could not be completed. Please try again.');
+            return;
+        }
+
+        submissionErrorMessage.textContent = error.message ||
+            'The submission could not be completed. Please review the details and try again.';
+        submissionErrorList.replaceChildren();
+
+        (error.errors || []).forEach(item => {
+            const entry = document.createElement('li');
+            const field = typeof item.field === 'string' ? item.field.replace(/[._]/g, ' ') : '';
+            entry.textContent = field
+                ? `${field}: ${item.message || 'Please review this item.'}`
+                : item.message || 'Please review the form and try again.';
+            submissionErrorList.appendChild(entry);
+        });
+
+        if (error.supportReference) {
+            const reference = document.createElement('li');
+            reference.textContent = `Support reference: ${error.supportReference}`;
+            submissionErrorList.appendChild(reference);
+        }
+
+        submissionErrorList.hidden = submissionErrorList.childElementCount === 0;
+        submissionError.style.display = 'flex';
+        submissionError.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function confirmSubmit() {

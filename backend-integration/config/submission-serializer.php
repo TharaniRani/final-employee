@@ -91,7 +91,7 @@ function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): ar
 
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("
-        SELECT id, document_type, stored_name
+        SELECT id, document_type, stored_name, file_path
         FROM employee_documents
         WHERE employee_id = ? AND id IN ($placeholders)
     ");
@@ -104,6 +104,24 @@ function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): ar
             (string) $document['document_type'],
             (string) $document['stored_name']
         );
+        $recordedPath = str_replace('\\', '/', (string) ($document['file_path'] ?? ''));
+        if (str_starts_with($recordedPath, 'employees_temp_documents/')) {
+            $expectedTempPath = submissionTemporaryDocumentRelativePath(
+                $employeeId,
+                (string) $document['document_type'],
+                (string) $document['stored_name']
+            );
+            if ($recordedPath !== $expectedTempPath) {
+                throw new DomainException('A staged document path is invalid. Please upload it again.');
+            }
+            $temporaryAbsolutePath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR .
+                str_replace('/', DIRECTORY_SEPARATOR, $expectedTempPath);
+            if (!is_file($temporaryAbsolutePath)) {
+                throw new DomainException('A staged document is unavailable. Please upload it again.');
+            }
+            $paths[(string) $document['id']] = $expectedTempPath;
+            continue;
+        }
         $legacyPath = submissionLegacyDocumentRelativePath($employeeId, (string) $document['stored_name']);
         $projectRoot = dirname(__DIR__, 2);
         if (!is_file(submissionDocumentAbsolutePath(
@@ -136,10 +154,16 @@ function submissionFilePath(array $paths, $fileId): ?string
 function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mobile, string $referenceNumber, string $submittedAt): array
 {
     $paths = loadSubmissionFilePaths($pdo, $employeeId, $data);
+    $sameAsPermanent = submissionBoolean(submissionValue($data, 'address.same_as_permanent'));
     $currentAddress = static function (string $field) use ($data): string {
         return (string) submissionValue($data, 'address.current.' . $field, '');
     };
-    $permanentAddress = static function (string $field) use ($data): string {
+    $permanentAddress = static function (string $field) use ($data, $sameAsPermanent, $currentAddress): string {
+        $currentValue = $currentAddress($field);
+        if ($sameAsPermanent && trim($currentValue) !== '') {
+            return $currentValue;
+        }
+
         return (string) submissionValue($data, 'address.permanent.' . $field, '');
     };
     $nokAddress = static function (string $field) use ($data): string {
@@ -151,6 +175,25 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
         if (!is_array($entry)) {
             continue;
         }
+        $certificatePath = submissionFilePath($paths, $entry['certificate_file_id'] ?? null);
+        $existingEducationId = filter_var($entry['existing_row_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1]
+        ]);
+        if ($certificatePath === null && $existingEducationId !== false && $existingEducationId !== null) {
+            $existingCertificate = $pdo->prepare("
+                SELECT certificate_path
+                FROM educational_qualifications
+                WHERE id = ? AND employee_id = ?
+            ");
+            $existingCertificate->execute([$existingEducationId, $employeeId]);
+            $storedCertificatePath = $existingCertificate->fetchColumn();
+            if ($storedCertificatePath === false) {
+                throw new DomainException('An existing qualification could not be verified. Refresh and try again.');
+            }
+            $certificatePath = $storedCertificatePath === null || $storedCertificatePath === ''
+                ? null
+                : (string) $storedCertificatePath;
+        }
         $education[] = [
             'qualification_type' => submissionValue($entry, 'qualification_type'),
             'qualification_name' => submissionValue($entry, 'qualification_name'),
@@ -158,7 +201,8 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
             'special_talents' => submissionValue($entry, 'special_talents'),
             'institution' => submissionValue($entry, 'institution'),
             'year_of_completion' => submissionValue($entry, 'year_of_completion'),
-            'certificate_file_path' => submissionFilePath($paths, $entry['certificate_file_id'] ?? null)
+            'certificate_file_path' => $certificatePath,
+            'existing_row_id' => $existingEducationId === false ? null : $existingEducationId
         ];
     }
 
@@ -254,7 +298,7 @@ function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mob
                 'state' => $currentAddress('state'),
                 'country' => $currentAddress('country')
             ],
-            'same_as_permanent' => submissionBoolean(submissionValue($data, 'address.same_as_permanent')),
+            'same_as_permanent' => $sameAsPermanent,
             'permanent' => [
                 'address1' => $permanentAddress('address_line1'),
                 'address2' => $permanentAddress('address_line2'),

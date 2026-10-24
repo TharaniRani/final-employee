@@ -1,7 +1,7 @@
 <?php
 /**
  * Get Units Endpoint
- * Returns list of organizational units
+ * Returns the configured organizational unit choices.
  */
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');

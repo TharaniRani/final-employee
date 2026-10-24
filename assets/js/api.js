@@ -43,19 +43,12 @@ window.HRMS_API = (function() {
         }
 
         try {
-            const response = await fetch(url, mergedOptions);
+            let response = await fetch(url, mergedOptions);
 
             if (response.status === 419) {
-                // CSRF token expired, try to refresh
                 await refreshCsrfToken();
                 mergedOptions.headers['X-CSRF-Token'] = csrfToken;
-                return fetch(url, mergedOptions);
-            }
-
-            if (response.status === 401) {
-                // Session expired
-                window.location.reload();
-                return;
+                response = await fetch(url, mergedOptions);
             }
 
             const contentType = response.headers.get('content-type');
@@ -67,33 +60,68 @@ window.HRMS_API = (function() {
                 data = await response.text();
             }
 
-            if (data && typeof data === 'object' && data.success === false) {
-                throw new Error(data.message || 'The request failed');
+            if (response.status === 401) {
+                throw createApiError(
+                    response,
+                    data,
+                    'Your secure session has expired. Sign in again; your saved draft should remain available in this browser.'
+                );
             }
 
-            if (!response.ok) {
-                throw new Error(data.message || `HTTP error! status: ${response.status}`);
+            if (!response.ok || data && typeof data === 'object' && data.success === false) {
+                throw createApiError(response, data, 'The request could not be completed.');
             }
 
             return data;
         } catch (error) {
             console.error('API Error:', error);
+            if (error && error.status === undefined && error.name === 'TypeError') {
+                throw new Error('We could not connect to the HRMS server. Check your connection and try submitting again.');
+            }
             throw error;
         }
     }
 
+    function createApiError(response, data, fallbackMessage) {
+        const serverMessage = data && typeof data === 'object' && typeof data.message === 'string'
+            ? data.message
+            : typeof data === 'string' && data.trim() && !data.trimStart().startsWith('<') &&
+                data.trim().length <= 500
+                ? data.trim()
+                : '';
+        const message = response.status === 401
+            ? 'Your secure session has expired. Reload the page to verify again; your saved draft should remain available in this browser.'
+            : response.status === 419
+                ? 'Your secure form session could not be refreshed. Reload the page and try again.'
+                : serverMessage || `${fallbackMessage} (HTTP ${response.status})`;
+        const error = new Error(message);
+        error.status = response.status;
+        error.errors = data && typeof data === 'object' && Array.isArray(data.errors)
+            ? data.errors
+            : [];
+        error.supportReference = data && typeof data === 'object'
+            ? data.support_reference || ''
+            : '';
+        return error;
+    }
+
     async function refreshCsrfToken() {
-        try {
-            const response = await fetch(config.basePath + '/backend-integration/api/csrf-token.php', {
-                credentials: 'same-origin'
-            });
-            const data = await response.json();
-            if (data.csrf_token) {
-                csrfToken = data.csrf_token;
+        const response = await fetch(config.basePath + '/backend-integration/api/csrf-token.php', {
+            credentials: 'same-origin'
+        });
+        const contentType = response.headers.get('content-type') || '';
+        let data = null;
+        if (response.ok && contentType.includes('application/json')) {
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error('Your secure form session could not be refreshed. Reload the page and try again.');
             }
-        } catch (error) {
-            console.error('Failed to refresh CSRF token:', error);
         }
+        if (!response.ok || !data || !data.csrf_token) {
+            throw new Error('Your secure form session could not be refreshed. Reload the page and try again.');
+        }
+        csrfToken = data.csrf_token;
     }
 
     return {
@@ -118,6 +146,13 @@ window.HRMS_API = (function() {
                 ? `${config.apiEndpoints.getEmployee}?employee_id=${encodeURIComponent(employeeId)}`
                 : config.apiEndpoints.getEmployee;
             return request(endpoint);
+        },
+
+        async getFamilyMemberEmployment(mssEmployeeId) {
+            return request(config.apiEndpoints.getFamilyMemberEmployment, {
+                method: 'POST',
+                body: { mss_employee_id: mssEmployeeId }
+            });
         },
 
         // Document Upload

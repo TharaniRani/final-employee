@@ -163,11 +163,9 @@ window.HRMS_Education = (function() {
                 }
             });
             uploadZone.setUploaded(entry.certificate_file_id);
-            if (entry.legacy_certificate_name) {
-                const note = document.createElement('p');
-                note.className = 'existing-document-note';
-                note.textContent = `Previously recorded: ${entry.legacy_certificate_name}`;
-                certUpload.appendChild(note);
+            if (entry.legacy_certificate_name && entry.existing_row_id) {
+                const url = `${window.HRMS_CONFIG.basePath}/backend-integration/api/view-existing-document.php?type=education_certificate&row_id=${encodeURIComponent(entry.existing_row_id)}`;
+                uploadZone.setExistingDocument(entry.legacy_certificate_name, url);
             }
         }
 

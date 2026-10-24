@@ -190,8 +190,8 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
         <div class="repeater-item-body">
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">TMSS Employee ID <span class="required-indicator" aria-hidden="true">*</span></label>
-                    <input type="text" class="form-input" name="family_working_tmss_id[]" placeholder="Enter TMSS Employee ID" autocomplete="off" required>
+                    <label class="form-label">MSS Employee ID <span class="required-indicator" aria-hidden="true">*</span></label>
+                    <input type="text" class="form-input" name="family_working_tmss_id[]" placeholder="Enter MSS Employee ID" autocomplete="off" required>
                     <div class="form-error" role="alert"></div>
                 </div>
                 <div class="form-group">
@@ -203,17 +203,15 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Unit Name <span class="required-indicator" aria-hidden="true">*</span></label>
-                    <select class="form-select" name="family_working_unit[]" required>
-                        <option value="">Select unit</option>
-                    </select>
+                    <input type="text" class="form-input" name="family_working_unit[]" placeholder="Unit populated from MSS Employee ID" maxlength="255" autocomplete="organization" required>
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>
-            <!-- <div class="form-group">
+            <div class="form-group">
                 <label class="form-label">Designation <span class="required-indicator" aria-hidden="true">*</span></label>
                 <input type="text" class="form-input" name="family_working_designation[]" placeholder="Enter designation" autocomplete="off" required>
                 <div class="form-error" role="alert"></div>
-            </div> -->
+            </div>
         </div>
     </div>
 </template>

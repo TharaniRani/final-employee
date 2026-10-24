@@ -138,6 +138,7 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                 </div>
             </div>
 
+            <div class="conditional-field" id="other-documents-section" style="display: none;">
             <hr class="divider my-5">
 
             <h3 class="h5 mb-4">Other Documents</h3>
@@ -218,6 +219,7 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                 <div class="repeater-items" id="other-documents-items">
                     <!-- Other document items added dynamically -->
                 </div>
+            </div>
             </div>
         </form>
     </div>

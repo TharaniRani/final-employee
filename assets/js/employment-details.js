@@ -33,20 +33,18 @@ window.HRMS_EmploymentDetails = (function() {
     async function loadOptions() {
         const errorContainer = document.getElementById('employment-options-error');
         try {
-            const [unitResult, employmentResult] = await Promise.all([
-                api.getUnits(),
-                api.getEmploymentOptions()
-            ]);
+            const employmentResult = await api.getEmploymentOptions();
             const employmentOptions = employmentResult?.options;
             const requiredFields = ['campus', 'employee_type', 'job_type', 'reporting_to'];
-            if (!unitResult?.success || !Array.isArray(unitResult.units) ||
+            if (!Array.isArray(window.HRMS_CONFIG.schools) ||
+                window.HRMS_CONFIG.schools.length === 0 ||
                 !employmentResult?.success || !employmentOptions ||
                 !requiredFields.every(field => Array.isArray(employmentOptions[field]) && employmentOptions[field].length > 0)) {
                 throw new Error('Employment dropdown options were not returned by the server.');
             }
             options = {
                 ...employmentOptions,
-                unit: unitResult.units
+                unit: window.HRMS_CONFIG.schools
             };
             populateSelects();
             if (errorContainer) errorContainer.hidden = true;

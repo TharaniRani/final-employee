@@ -8,6 +8,7 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/secure-session.php';
 require_once __DIR__ . '/../config/submission-staging.php';
+require_once __DIR__ . '/../config/document-storage.php';
 startSecureSession();
 
 $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -222,6 +223,7 @@ if (!ctype_digit((string) $reviewerId) || (int) $reviewerId < 1) {
 
 try {
     $pdo = getDatabaseConnection();
+    $promotedDocuments = [];
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("
@@ -292,7 +294,14 @@ try {
         $formData['submission']['changed_fields'] = $changedFields;
     }
     if ($decision === 'approve' || $decision === 'approve_fields') {
-        applyApprovedSubmissionFields($pdo, $employeeId, (int) $submissionId, $approvedFields, (int) $reviewerId);
+        applyApprovedSubmissionFields(
+            $pdo,
+            $employeeId,
+            (int) $submissionId,
+            $approvedFields,
+            (int) $reviewerId,
+            $promotedDocuments
+        );
     }
 
     if ($partialDecision) {
@@ -391,6 +400,13 @@ try {
     ]);
 
     $pdo->commit();
+    foreach ($promotedDocuments as $document) {
+        $temporaryAbsolutePath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR .
+            str_replace('/', DIRECTORY_SEPARATOR, $document['temporary_path']);
+        if (is_file($temporaryAbsolutePath) && !unlink($temporaryAbsolutePath)) {
+            error_log('Approved document remains in temporary storage: ' . $document['temporary_path']);
+        }
+    }
     echo json_encode([
         'success' => true,
         'status' => $status,
@@ -408,18 +424,27 @@ try {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    removeUncommittedPromotedDocuments($promotedDocuments ?? []);
     http_response_code(409);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    removeUncommittedPromotedDocuments($promotedDocuments ?? []);
     error_log('HR submission review failed: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Review could not be completed']);
 }
 
-function applyApprovedSubmissionFields(PDO $pdo, int $employeeId, int $submissionId, array $approvedFields, int $reviewerId): void
+function applyApprovedSubmissionFields(
+    PDO $pdo,
+    int $employeeId,
+    int $submissionId,
+    array $approvedFields,
+    int $reviewerId,
+    array &$promotedDocuments = []
+): void
 {
     $fieldMap = submissionApprovalFieldMap();
     $collectionMap = submissionApprovalCollectionMap();
@@ -438,7 +463,8 @@ function applyApprovedSubmissionFields(PDO $pdo, int $employeeId, int $submissio
                 $employeeId,
                 $submissionId,
                 $reviewerId,
-                $collectionMap[$field]
+                $collectionMap[$field],
+                $promotedDocuments
             );
             continue;
         }
@@ -454,6 +480,24 @@ function applyApprovedSubmissionFields(PDO $pdo, int $employeeId, int $submissio
         $value = $staged->fetchColumn();
         if ($value === false) {
             throw new DomainException("Staged value for {$field} was not found.");
+        }
+        if (is_string($value)) {
+            $promotedValue = promoteApprovedDocumentValue(
+                $pdo,
+                $employeeId,
+                $mapping['column'],
+                $value,
+                $promotedDocuments
+            );
+            if ($promotedValue !== $value) {
+                $updateStaged = $pdo->prepare(sprintf(
+                    'UPDATE `%s` SET `%s` = ? WHERE employee_id = ? AND submission_id = ?',
+                    $mapping['staging_table'],
+                    $mapping['column']
+                ));
+                $updateStaged->execute([$promotedValue, $employeeId, $submissionId]);
+            }
+            $value = $promotedValue;
         }
 
         $original = $pdo->prepare(sprintf(
@@ -691,8 +735,7 @@ function submissionApprovalCollectionMap(): array
             'original_table' => 'employee_referrals',
             'primary_key' => 'referral_id',
             'columns' => [
-                'employee_id', // 'referral_source', 'referred_by', 'family_members_working',
-                'working_tmss_id', 'working_name', 'working_unit', 'working_designation', 'family_members_studying',
+                'employee_id', 'working_name', 'working_unit', 'working_designation', 'family_members_studying',
                 'student_name', 'student_unit', 'student_class', 'mobile_no'
             ]
         ],
@@ -724,7 +767,8 @@ function replaceApprovedSubmissionCollection(
     int $employeeId,
     int $submissionId,
     int $reviewerId,
-    array $mapping
+    array $mapping,
+    array &$promotedDocuments = []
 ): void {
     $select = $pdo->prepare(sprintf(
         'SELECT * FROM `%s` WHERE employee_id = ? AND submission_id = ? ORDER BY `%s`',
@@ -741,6 +785,32 @@ function replaceApprovedSubmissionCollection(
     $delete->execute([$employeeId]);
 
     foreach ($rows as $row) {
+        foreach (['certificate_path', 'pay_slip', 'experience_letter_path'] as $documentColumn) {
+            if (isset($row[$documentColumn]) && is_string($row[$documentColumn])) {
+                $promotedValue = promoteApprovedDocumentValue(
+                    $pdo,
+                    $employeeId,
+                    $documentColumn,
+                    $row[$documentColumn],
+                    $promotedDocuments
+                );
+                if ($promotedValue !== $row[$documentColumn]) {
+                    $updateStaged = $pdo->prepare(sprintf(
+                        'UPDATE `%s` SET `%s` = ? WHERE employee_id = ? AND submission_id = ? AND `%s` = ?',
+                        $mapping['staging_table'],
+                        $documentColumn,
+                        $mapping['primary_key']
+                    ));
+                    $updateStaged->execute([
+                        $promotedValue,
+                        $employeeId,
+                        $submissionId,
+                        $row[$mapping['primary_key']]
+                    ]);
+                }
+                $row[$documentColumn] = $promotedValue;
+            }
+        }
         $row['employee_id'] = $employeeId;
         if (in_array('created_by', $mapping['columns'], true)) {
             $row['created_by'] = $reviewerId;
@@ -763,5 +833,79 @@ function replaceApprovedSubmissionCollection(
             $placeholders
         ));
         $insert->execute($values);
+    }
+}
+
+function promoteApprovedDocumentValue(
+    PDO $pdo,
+    int $employeeId,
+    string $column,
+    string $value,
+    array &$promotedDocuments
+): string {
+    if (!str_starts_with(str_replace('\\', '/', $value), 'employees_temp_documents/')) {
+        return $value;
+    }
+
+    $types = [
+        'aadhar_copy' => 'aadhaar',
+        'pan_copy' => 'pan',
+        'photo' => 'photo',
+        'resume' => 'resume',
+        'staff_sign' => 'signature',
+        'driving' => 'driving',
+        'certificate_path' => 'education_certificate',
+        'pay_slip' => 'experience_payslip',
+        'experience_letter_path' => 'experience_letter'
+    ];
+    if (!isset($types[$column])) {
+        throw new DomainException('A staged document is assigned to an unsupported employee field.');
+    }
+
+    $normalizedPath = str_replace('\\', '/', $value);
+    if (isset($promotedDocuments[$normalizedPath])) {
+        return $promotedDocuments[$normalizedPath]['path'];
+    }
+
+    $result = submissionPromoteDocumentPath(
+        dirname(__DIR__, 2),
+        $employeeId,
+        $types[$column],
+        $normalizedPath
+    );
+    if ($result['temporary_path'] !== null) {
+        $promotedDocuments[$normalizedPath] = $result;
+        $storedName = basename($result['temporary_path']);
+        $updateDocument = $pdo->prepare("
+            UPDATE employee_documents
+            SET file_path = ?
+            WHERE employee_id = ? AND stored_name = ? AND file_path = ?
+        ");
+        $updateDocument->execute([
+            $result['path'],
+            $employeeId,
+            $storedName,
+            $normalizedPath
+        ]);
+        if ($updateDocument->rowCount() !== 1) {
+            throw new DomainException('The staged document record could not be updated.');
+        }
+    }
+
+    return $result['path'];
+}
+
+function removeUncommittedPromotedDocuments(array $promotedDocuments): void
+{
+    $projectRoot = dirname(__DIR__, 2);
+    foreach ($promotedDocuments as $document) {
+        if (empty($document['permanent_path'])) {
+            continue;
+        }
+        $permanentAbsolutePath = $projectRoot . DIRECTORY_SEPARATOR .
+            str_replace('/', DIRECTORY_SEPARATOR, $document['permanent_path']);
+        if (is_file($permanentAbsolutePath) && !unlink($permanentAbsolutePath)) {
+            error_log('Unable to remove an uncommitted approved document: ' . $document['permanent_path']);
+        }
     }
 }

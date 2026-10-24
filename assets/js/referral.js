@@ -8,6 +8,7 @@ window.HRMS_Referral = (function() {
     const state = window.HRMS_FormState;
     const validation = window.HRMS_Validation;
     const fileUpload = window.HRMS_FileUpload;
+    const api = window.HRMS_API;
 
     // Family Working
     const fwContainer = document.getElementById('family-working-items');
@@ -168,8 +169,6 @@ window.HRMS_Referral = (function() {
             fwContainer.appendChild(clone);
         });
 
-        // Populate unit dropdowns
-        populateUnitDropdowns();
     }
 
     function populateFamilyWorkingFields(item, entry, index) {
@@ -185,14 +184,11 @@ window.HRMS_Referral = (function() {
             nameInput.dataset.index = index;
         }
 
-        const unitSelect = item.querySelector('select[name="family_working_unit[]"]');
-        if (unitSelect) {
+        const unitInput = item.querySelector('input[name="family_working_unit[]"]');
+        if (unitInput) {
             const value = String(entry.unit?.original_value || '');
-            if (value && !Array.from(unitSelect.options).some(option => option.value === value)) {
-                unitSelect.add(new Option(`${value} (stored value)`, value));
-            }
-            unitSelect.value = value;
-            unitSelect.dataset.index = index;
+            unitInput.value = value;
+            unitInput.dataset.index = index;
         }
 
         const designationInput = item.querySelector('input[name="family_working_designation[]"]');
@@ -208,8 +204,8 @@ window.HRMS_Referral = (function() {
         const fieldMappings = [
             { selector: 'input[name="family_working_tmss_id[]"]', path: 'tmss_id' },
             { selector: 'input[name="family_working_name[]"]', path: 'name' },
-            { selector: 'select[name="family_working_unit[]"]', path: 'unit' }
-            // { selector: 'input[name="family_working_designation[]"]', path: 'designation' }
+            { selector: 'input[name="family_working_unit[]"]', path: 'unit' },
+            { selector: 'input[name="family_working_designation[]"]', path: 'designation' }
         ];
 
         fieldMappings.forEach(({ selector, path }) => {
@@ -228,6 +224,94 @@ window.HRMS_Referral = (function() {
                 });
             }
         });
+
+        const mssIdInput = item.querySelector('input[name="family_working_tmss_id[]"]');
+        const lookupError = mssIdInput?.closest('.form-group')?.querySelector('.form-error');
+        const nameInput = item.querySelector('input[name="family_working_name[]"]');
+        const unitInput = item.querySelector('input[name="family_working_unit[]"]');
+        const designationInput = item.querySelector('input[name="family_working_designation[]"]');
+        let lookupTimer = null;
+        let lookupSequence = 0;
+        let lastLookedUpId = '';
+        let previousMssEmployeeId = mssIdInput?.value.trim() || '';
+
+        const setLookupMessage = (message) => {
+            if (!lookupError || !mssIdInput) return;
+            lookupError.textContent = message;
+            lookupError.style.display = message ? 'flex' : 'none';
+            mssIdInput.classList.toggle('error', !!message);
+            if (message) {
+                mssIdInput.setAttribute('aria-invalid', 'true');
+            } else {
+                mssIdInput.removeAttribute('aria-invalid');
+            }
+        };
+
+        const updateEmploymentField = (path, control, value) => {
+            if (!control) return;
+            const normalizedValue = String(value || '').trim();
+            control.value = normalizedValue;
+            state.updateFamilyWorking(entry.id, {
+                [path]: {
+                    original_value: normalizedValue,
+                    verification: 'pending',
+                    corrected_value: null
+                }
+            });
+        };
+
+        const clearEmploymentFields = () => {
+            updateEmploymentField('name', nameInput, '');
+            updateEmploymentField('unit', unitInput, '');
+            updateEmploymentField('designation', designationInput, '');
+        };
+
+        const lookupEmployment = async () => {
+            if (!mssIdInput) return;
+            const mssEmployeeId = mssIdInput.value.trim();
+            if (!mssEmployeeId) {
+                setLookupMessage('');
+                return;
+            }
+
+            const requestSequence = ++lookupSequence;
+            try {
+                const result = await api.getFamilyMemberEmployment(mssEmployeeId);
+                if (requestSequence !== lookupSequence || mssIdInput.value.trim() !== mssEmployeeId) return;
+                updateEmploymentField('name', nameInput, result.employee?.full_name);
+                updateEmploymentField('unit', unitInput, result.employee?.unit);
+                updateEmploymentField('designation', designationInput, result.employee?.designation);
+                lastLookedUpId = mssEmployeeId;
+                previousMssEmployeeId = mssEmployeeId;
+                setLookupMessage('');
+            } catch (error) {
+                if (requestSequence !== lookupSequence || mssIdInput.value.trim() !== mssEmployeeId) return;
+                clearEmploymentFields();
+                lastLookedUpId = '';
+                setLookupMessage(error.message || 'No employee was found for that MSS Employee ID.');
+            }
+        };
+
+        if (mssIdInput) {
+            mssIdInput.addEventListener('input', () => {
+                const mssEmployeeId = mssIdInput.value.trim();
+                lookupSequence++;
+                clearTimeout(lookupTimer);
+                setLookupMessage('');
+                if (mssEmployeeId !== previousMssEmployeeId) {
+                    clearEmploymentFields();
+                    lastLookedUpId = '';
+                }
+                previousMssEmployeeId = mssEmployeeId;
+                if (mssEmployeeId) {
+                    lookupTimer = setTimeout(lookupEmployment, 600);
+                }
+            });
+            mssIdInput.addEventListener('blur', () => {
+                clearTimeout(lookupTimer);
+                lookupEmployment();
+            });
+        }
 
         // Remove button
         const removeBtn = item.querySelector('.repeater-item-remove');
@@ -351,24 +435,6 @@ window.HRMS_Referral = (function() {
         }
     }
 
-    function populateUnitDropdowns() {
-        const selects = document.querySelectorAll('select[name="family_working_unit[]"]');
-        const units = getUnits();
-
-        selects.forEach(select => {
-            const currentValue = select.value;
-            if (select.options.length <= 1) {
-                units.forEach(unit => {
-                    const option = document.createElement('option');
-                    option.value = unit;
-                    option.textContent = unit;
-                    select.appendChild(option);
-                });
-            }
-            select.value = currentValue;
-        });
-    }
-
     function populateSchoolDropdowns() {
         const selects = document.querySelectorAll('select[name="family_studying_school[]"]');
         const schools = window.HRMS_CONFIG.schools || [];
@@ -385,34 +451,6 @@ window.HRMS_Referral = (function() {
             }
             select.value = currentValue;
         });
-    }
-
-    function getUnits() {
-        // This would ideally come from backend
-        return [
-            'Lady Andal House of Children, Chetpet',
-            'Lady Andal Open School - NIOS, T. Nagar',
-            'Lady Andal Open School - OS, T. Nagar',
-            'Lady Andal School - IB, Chetpet',
-            'Prem Vihar, Chetpet',
-            'School of Sound and Music, Chetpet',
-            'Shanthi Sadan, Chetpet',
-            'Sir & Lady M. Venkatasubba Rao Hr., Sec., School, Tambaram',
-            'Sir Mutha School - CBSE, Chetpet',
-            'Sir Mutha Venkatasubba Rao Concert Hall, Chetpet',
-            'The Madras Seva Sadan - Head Office, Chetpet',
-            'The Madras Seva Sadan Hr., Sec., School, Chetpet',
-            'The Madras Seva Sadan Hr., Sec., School, Tambaram',
-            'The Madras Seva Sadan Nursery and Primary School, Tambaram',
-            'Central Office',
-            'Administration',
-            'Finance',
-            'Human Resources',
-            'Academic Affairs',
-            'Student Affairs',
-            'Facilities',
-            'IT Department'
-        ];
     }
 
     function validateField(input, fieldPath) {

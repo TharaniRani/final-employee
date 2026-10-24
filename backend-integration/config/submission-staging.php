@@ -265,17 +265,30 @@ function submissionDatabaseDate($value, bool $required = false): ?string
     return $matches[1] . '-' . $matches[2] . '-01';
 }
 
-function submissionUnitId($value, $fallback): int
+function submissionSchoolText($value, $fallback): string
 {
     $value = trim((string) ($value ?? ''));
     if ($value === '') {
         $value = trim((string) ($fallback ?? ''));
     }
-    if ($value === '' || !ctype_digit($value)) {
-        throw new DomainException('A family member unit or school selection is invalid.');
+    if ($value === '') {
+        throw new DomainException('A family member school is required.');
     }
 
-    return (int) $value;
+    return $value;
+}
+
+function submissionUnitText($value, $fallback): string
+{
+    $value = trim((string) ($value ?? ''));
+    if ($value === '') {
+        $value = trim((string) ($fallback ?? ''));
+    }
+    if ($value === '') {
+        throw new DomainException('A family member unit is required.');
+    }
+
+    return $value;
 }
 
 function stageSubmissionRepeaterRow(
@@ -309,17 +322,23 @@ function buildSubmissionReferralRows(PDO $pdo, int $employeeId, array $referral)
     for ($index = 0; $index < $rowCount; $index++) {
         $workingMember = $working[$index] ?? [];
         $student = $students[$index] ?? [];
+        $workingStatus = (string) ($referral['family_members_working'] ?? 'No');
+        $studyingStatus = (string) ($referral['family_members_studying'] ?? 'No');
         $rows[] = array_replace($baseline, [
             // 'referral_source' => (string) ($referral['referred_by']['source'] ?? ''),
             'referred_by' => (string) ($referral['referred_by']['name'] ?? ''),
-            'family_members_working' => (string) ($referral['family_members_working'] ?? 'No'),
+            'family_members_working' => $workingStatus,
             'working_tmss_id' => (string) ($workingMember['tmss_id'] ?? ''),
             'working_name' => (string) ($workingMember['name'] ?? ''),
-            'working_unit' => submissionUnitId($workingMember['unit'] ?? '', $baseline['working_unit'] ?? ''),
+            'working_unit' => $workingStatus === 'Yes'
+                ? submissionUnitText($workingMember['unit'] ?? '', $baseline['working_unit'] ?? '')
+                : (string) ($baseline['working_unit'] ?? ''),
             'working_designation' => (string) ($workingMember['designation'] ?? ''),
-            'family_members_studying' => (string) ($referral['family_members_studying'] ?? 'No'),
+            'family_members_studying' => $studyingStatus,
             'student_name' => (string) ($student['name'] ?? ''),
-            'student_unit' => submissionUnitId($student['school'] ?? '', $baseline['student_unit'] ?? ''),
+            'student_unit' => $studyingStatus === 'Yes'
+                ? submissionSchoolText($student['school'] ?? '', '')
+                : (string) ($baseline['student_unit'] ?? ''),
             'student_class' => (string) ($student['class'] ?? '')
         ]);
     }
