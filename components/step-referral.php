@@ -196,21 +196,22 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
                 </div>
                 <div class="form-group">
                     <label class="form-label">Full Name <span class="required-indicator" aria-hidden="true">*</span></label>
-                    <input type="text" class="form-input" name="family_working_name[]" placeholder="Enter full name" autocomplete="name" required>
+                    <input type="text" class="form-input" name="family_working_name[]" placeholder="Populated from MSS Employee ID" autocomplete="off" readonly required>
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Unit Name <span class="required-indicator" aria-hidden="true">*</span></label>
-                    <input type="text" class="form-input" name="family_working_unit[]" placeholder="Unit populated from MSS Employee ID" maxlength="255" autocomplete="organization" required>
+                    <input type="text" class="form-input" name="family_working_unit[]" placeholder="Populated from MSS Employee ID" maxlength="255" autocomplete="off" readonly required>
                     <div class="form-error" role="alert"></div>
                 </div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Designation <span class="required-indicator" aria-hidden="true">*</span></label>
-                <input type="text" class="form-input" name="family_working_designation[]" placeholder="Enter designation" autocomplete="off" required>
-                <div class="form-error" role="alert"></div>
+
+                <div class="form-group">
+                    <label class="form-label">Designation <span class="required-indicator" aria-hidden="true">*</span></label>
+                    <input type="text" class="form-input" name="family_working_designation[]" placeholder="Populated from MSS Employee ID" autocomplete="off" readonly required>
+                    <div class="form-error" role="alert"></div>
+                </div>
             </div>
         </div>
     </div>

@@ -340,7 +340,8 @@ window.HRMS_Validation = (function() {
 
         // Required check
         if (rule.required || rule.requiredIf) {
-            if (effectiveValue === undefined || effectiveValue === null || effectiveValue === '') {
+            if (effectiveValue === undefined || effectiveValue === null || effectiveValue === '' ||
+                rule.required && effectiveValue === false) {
                 return { valid: false, message: rule.message };
             }
         }
@@ -621,16 +622,226 @@ window.HRMS_Validation = (function() {
         return allErrors;
     }
 
+    function validateControl(control) {
+        if (!(control instanceof HTMLElement)) return null;
+
+        const state = window.HRMS_FormState.getState();
+        const arrayMappings = {
+            education_qualification_type: ['education', 'education', 'qualification_type'],
+            education_qualification_name: ['education', 'education', 'qualification_name'],
+            education_skilled_in: ['education', 'education', 'skilled_in'],
+            education_institution: ['education', 'education', 'institution'],
+            education_year: ['education', 'education', 'year_of_completion'],
+            family_working_tmss_id: ['referral.family_working_details', 'family_working_details', 'tmss_id'],
+            family_working_name: ['referral.family_working_details', 'family_working_details', 'name'],
+            family_working_unit: ['referral.family_working_details', 'family_working_details', 'unit'],
+            family_working_designation: ['referral.family_working_details', 'family_working_details', 'designation'],
+            family_studying_name: ['referral.family_studying_details', 'family_studying_details', 'name'],
+            family_studying_school: ['referral.family_studying_details', 'family_studying_details', 'school'],
+            family_studying_class: ['referral.family_studying_details', 'family_studying_details', 'class'],
+            other_doc_title: ['teacher_documents.other_documents', 'teacher_documents.other_documents', 'title'],
+            experience_company: ['work_experience.entries', 'experience_entries', 'company'],
+            experience_designation: ['work_experience.entries', 'experience_entries', 'designation'],
+            experience_start_month: ['work_experience.entries', 'experience_entries', 'start_month'],
+            experience_end_month: ['work_experience.entries', 'experience_entries', 'end_month'],
+            experience_details: ['work_experience.entries', 'experience_entries', 'details']
+        };
+        const arrayFileMappings = {
+            'education-certificate-upload': ['education', 'education', 'certificate_file_id'],
+            'other-doc-upload': ['teacher_documents.other_documents', 'teacher_documents.other_documents', 'file_id']
+        };
+        const fileAliases = {
+            'resume-upload': 'resume_file_id',
+            'aadhaar-upload': 'aadhaar_file_id',
+            'pan-upload': 'pan_file_id',
+            'photo-upload': 'photo_file_id',
+            'signature-upload': 'signature_file_id',
+            'bed-upload': 'bed_file_id',
+            'driving-license-upload': 'driving_license_file_id',
+            'police-verification-upload': 'police_verification_file_id'
+        };
+        const errorFieldAliases = {
+            is_alumni: 'alumni',
+            resume_file_id: 'resume',
+            aadhaar_file_id: 'aadhaar-upload',
+            pan_file_id: 'pan-upload',
+            photo_file_id: 'photo',
+            signature_file_id: 'signature',
+            bed_file_id: 'bed-upload',
+            driving_license_file_id: 'driving-license',
+            police_verification_file_id: 'police-verification',
+            nok_emergency_contact: 'emergency-contact',
+            declaration: 'declaration-checkbox',
+            terms_accepted: 'terms-checkbox',
+            experience_not_applicable: 'experience-na'
+        };
+        const errorControlAliases = {
+            is_alumni: 'alumni-group',
+            resume_file_id: 'resume-upload',
+            photo_file_id: 'photo-upload',
+            signature_file_id: 'signature-upload',
+            driving_license_file_id: 'driving-license-upload',
+            police_verification_file_id: 'police-verification-upload'
+        };
+
+        const controlName = control.getAttribute('name') || '';
+        let fieldName = controlName.replace(/\[\]$/, '').replace(/_(corrected|verification)$/, '');
+        let mapping = arrayMappings[fieldName];
+        if (control.classList.contains('file-upload')) {
+            const uploadClass = ['education-certificate-upload', 'other-doc-upload']
+                .find(className => control.classList.contains(className));
+            mapping = arrayFileMappings[control.id] || arrayFileMappings[uploadClass] || mapping;
+            fieldName = fileAliases[control.id] || fieldName;
+        }
+
+        if (mapping) {
+            const [stateArrayPath, ruleArrayPath, field] = mapping;
+            const containerIds = {
+                education: 'education-items',
+                'referral.family_working_details': 'family-working-items',
+                'referral.family_studying_details': 'family-studying-items',
+                'teacher_documents.other_documents': 'other-documents-items',
+                'work_experience.entries': 'experience-items'
+            };
+            const container = document.getElementById(containerIds[stateArrayPath]);
+            let item = control;
+            while (container && item.parentElement && item.parentElement !== container) {
+                item = item.parentElement;
+            }
+            const index = container ? Array.prototype.indexOf.call(container.children, item) : -1;
+            const entries = getPath(state, stateArrayPath);
+            const entry = Array.isArray(entries) ? entries[index] : null;
+            if (!entry || index < 0) return null;
+
+            const path = `${stateArrayPath}[${index}].${field}`;
+            const rulePath = `${ruleArrayPath}.*.${field}`;
+            const rule = rules[rulePath] || (
+                field === 'title' || field === 'file_id'
+                    ? { required: true, message: field === 'title' ? 'Enter document title' : 'Upload document' }
+                    : null
+            );
+            if (!rule) return null;
+
+            const result = validateField(
+                path,
+                getPath(entry, field),
+                state,
+                rule,
+                entry
+            );
+            const error = result.valid ? null : { path, message: result.message, index };
+            renderControlValidation(error, fieldName, control.id, control);
+            return result;
+        }
+
+        if (fieldName.startsWith('employment_') && fieldName.endsWith('_change')) {
+            const field = fieldName.slice('employment_'.length, -'_change'.length);
+            const value = getPath(state, `employment_details.${field}.change`);
+            const error = value === 'Yes' || value === 'No'
+                ? null
+                : {
+                    path: fieldName,
+                    message: `Choose whether to change ${field.replace(/_/g, ' ')}.`
+                };
+            renderControlValidation(error, fieldName.replace(/_/g, '-'), fieldName.replace(/_/g, '-'), control);
+            return { valid: !error, message: error?.message };
+        }
+
+        let ruleFieldName = fieldName;
+        let fieldValue;
+        if (fieldName.startsWith('employment_') && fieldName.endsWith('_updated')) {
+            ruleFieldName = fieldName.slice(0, -'_updated'.length);
+            const field = ruleFieldName.slice('employment_'.length);
+            const employmentField = state.employment_details?.[field];
+            if (employmentField?.change !== 'Yes') {
+                renderControlValidation(
+                    null,
+                    ruleFieldName.replace(/_/g, '-'),
+                    control.id || ruleFieldName.replace(/_/g, '-'),
+                    control
+                );
+                return { valid: true };
+            }
+            fieldValue = employmentField.updated_value;
+        } else {
+            const statePath = window.HRMS_FormState.getFieldStatePath(ruleFieldName);
+            if (!statePath) return null;
+            fieldValue = getPath(state, statePath);
+        }
+
+        if (!rules[ruleFieldName]) return null;
+        const result = validateField(ruleFieldName, fieldValue, state);
+        const fieldId = errorFieldAliases[ruleFieldName] ||
+            ruleFieldName.replace(/\./g, '-').replace(/\[(\d+)\]/g, '-$1').replace(/_/g, '-');
+        const controlId = errorControlAliases[ruleFieldName] || control.id || fieldId;
+        const error = result.valid ? null : {
+            path: ruleFieldName,
+            message: result.message,
+            controlId: control.id
+        };
+        renderControlValidation(error, fieldId, controlId, control);
+        return result;
+    }
+
+    function renderControlValidation(error, fieldId, controlId, control) {
+        if (error) {
+            showErrors([error]);
+        } else if (control && (
+            !control.id && control.name?.endsWith('[]') ||
+            control.classList.contains('education-certificate-upload') ||
+            control.classList.contains('other-doc-upload')
+        )) {
+            clearControlError(control);
+        } else {
+            clearError(fieldId, controlId);
+        }
+    }
+
+    function clearControlError(control) {
+        const errorEl = control.closest('.form-group')?.querySelector('.form-error') ||
+            control.closest('.file-upload')?.querySelector('.form-error');
+        const hadError = control.classList.contains('error') ||
+            control.getAttribute('aria-invalid') === 'true' ||
+            Boolean(errorEl?.textContent);
+        if (errorEl) {
+            errorEl.textContent = '';
+            errorEl.style.display = 'none';
+        }
+        control.classList.remove('error');
+        control.classList.toggle('success', hadError);
+        control.removeAttribute('aria-invalid');
+        removeDescribedBy(control, errorEl?.id);
+        control.querySelectorAll('.file-upload-zone, input[type="radio"]').forEach(child => {
+            child.classList.remove('error');
+            child.removeAttribute('aria-invalid');
+            removeDescribedBy(child, errorEl?.id);
+        });
+    }
+
     // UI Helpers
     function showError(fieldId, message, controlId = fieldId) {
-        const errorEl = document.getElementById(`${fieldId}-error`);
         const employmentReplacement = fieldId.startsWith('employment-')
             ? document.getElementById(`${fieldId}-replacement`)
             : null;
-        const inputEl = employmentReplacement && !employmentReplacement.hidden
+        let inputEl = employmentReplacement && !employmentReplacement.hidden
             ? document.getElementById(`${fieldId}-updated`)
-            : document.getElementById(controlId);
+            : document.getElementById(controlId) || document.getElementById(fieldId);
+        if (!inputEl && !employmentReplacement) {
+            const fieldName = fieldId.replace(/-/g, '_');
+            const namedControl = document.querySelector(`[name="${fieldName}"]`);
+            inputEl = namedControl?.closest('fieldset, .verification-group') || namedControl;
+        }
+        let errorEl = document.getElementById(`${fieldId}-error`) ||
+            inputEl?.closest('.form-group')?.querySelector('.form-error') ||
+            inputEl?.closest('.file-upload')?.querySelector('.form-error');
 
+        if (!errorEl && inputEl?.closest('.form-group')) {
+            errorEl = document.createElement('div');
+            errorEl.className = 'form-error';
+            errorEl.id = `${fieldId}-error`;
+            errorEl.setAttribute('role', 'alert');
+            inputEl.closest('.form-group').appendChild(errorEl);
+        }
         if (errorEl) {
             errorEl.textContent = message;
             errorEl.style.display = 'flex';
@@ -641,34 +852,81 @@ window.HRMS_Validation = (function() {
             if (uploadZone) {
                 uploadZone.classList.add('error');
                 uploadZone.setAttribute('aria-invalid', 'true');
-                uploadZone.setAttribute('aria-describedby', `${fieldId}-error`);
+                if (errorEl?.id) addDescribedBy(uploadZone, errorEl.id);
             }
         } else if (inputEl) {
             inputEl.classList.add('error');
             inputEl.classList.remove('success');
             inputEl.setAttribute('aria-invalid', 'true');
-            inputEl.setAttribute('aria-describedby', `${fieldId}-error`);
-            inputEl.querySelectorAll('input[type="radio"]').forEach(radio => {
+            if (errorEl?.id) addDescribedBy(inputEl, errorEl.id);
+            const inputType = inputEl.matches('input[type="radio"], input[type="checkbox"]')
+                ? inputEl.type
+                : null;
+            const group = inputType
+                ? inputEl.closest('fieldset, .verification-group, .radio-group, .checkbox-group') || inputEl
+                : inputEl;
+            const groupControls = group.querySelectorAll(inputType
+                ? `input[type="${inputType}"]`
+                : 'input[type="radio"], input[type="checkbox"]');
+            groupControls.forEach(radio => {
                 radio.classList.add('error');
                 radio.setAttribute('aria-invalid', 'true');
-                radio.setAttribute('aria-describedby', `${fieldId}-error`);
+                if (errorEl?.id) addDescribedBy(radio, errorEl.id);
             });
         }
     }
 
-    function clearError(fieldId) {
-        const errorEl = document.getElementById(`${fieldId}-error`);
-        const inputEl = document.getElementById(fieldId);
+    function addDescribedBy(control, errorId) {
+        const describedBy = new Set((control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+        describedBy.add(errorId);
+        control.setAttribute('aria-describedby', Array.from(describedBy).join(' '));
+    }
 
+    function clearError(fieldId, controlId = fieldId) {
+        const inputEl = document.getElementById(controlId) ||
+            document.getElementById(fieldId) ||
+            document.getElementById(`${fieldId}-upload`);
+        const errorEl = document.getElementById(`${fieldId}-error`) ||
+            inputEl?.closest('.form-group')?.querySelector('.form-error') ||
+            inputEl?.closest('.file-upload')?.querySelector('.form-error');
+
+        const hadError = inputEl?.classList.contains('error') ||
+            inputEl?.getAttribute('aria-invalid') === 'true' ||
+            Boolean(errorEl?.textContent);
         if (errorEl) {
             errorEl.textContent = '';
             errorEl.style.display = 'none';
         }
         if (inputEl) {
             inputEl.classList.remove('error');
-            inputEl.classList.add('success');
+            inputEl.classList.toggle('success', Boolean(hadError));
             inputEl.removeAttribute('aria-invalid');
-            inputEl.removeAttribute('aria-describedby');
+            removeDescribedBy(inputEl, errorEl?.id);
+            const inputType = inputEl.matches('input[type="radio"], input[type="checkbox"]')
+                ? inputEl.type
+                : null;
+            const group = inputType
+                ? inputEl.closest('fieldset, .verification-group, .radio-group, .checkbox-group') || inputEl
+                : inputEl;
+            group.querySelectorAll(inputType
+                ? `input[type="${inputType}"]`
+                : '.file-upload-zone, input[type="radio"], input[type="checkbox"]').forEach(control => {
+                control.classList.remove('error');
+                control.removeAttribute('aria-invalid');
+                removeDescribedBy(control, errorEl?.id);
+            });
+        }
+    }
+
+    function removeDescribedBy(control, errorId) {
+        if (!errorId) return;
+        const describedBy = (control.getAttribute('aria-describedby') || '')
+            .split(/\s+/)
+            .filter(id => id && id !== errorId);
+        if (describedBy.length) {
+            control.setAttribute('aria-describedby', describedBy.join(' '));
+        } else {
+            control.removeAttribute('aria-describedby');
         }
     }
 
@@ -690,6 +948,7 @@ window.HRMS_Validation = (function() {
             experience_not_applicable: 'experience-na'
         };
         const errorControlAliases = {
+            is_alumni: 'alumni-group',
             resume_file_id: 'resume-upload',
             photo_file_id: 'photo-upload',
             signature_file_id: 'signature-upload',
@@ -705,7 +964,7 @@ window.HRMS_Validation = (function() {
             // Convert path to field ID
             const fieldId = errorFieldAliases[error.path] ||
                 error.path.replace(/\./g, '-').replace(/\[(\d+)\]/g, '-$1').replace(/_/g, '-');
-            const controlId = errorControlAliases[error.path] || fieldId;
+            const controlId = errorControlAliases[error.path] || error.controlId || fieldId;
             showError(fieldId, error.message, controlId);
         });
     }
@@ -766,15 +1025,24 @@ window.HRMS_Validation = (function() {
         if (!control) return false;
 
         const formGroup = control.closest('.form-group');
-        const errorElement = formGroup?.querySelector('.form-error');
+        let errorElement = formGroup?.querySelector('.form-error');
+        if (formGroup && !errorElement) {
+            errorElement = document.createElement('div');
+            errorElement.className = 'form-error';
+            errorElement.setAttribute('role', 'alert');
+            formGroup.appendChild(errorElement);
+        }
         if (errorElement) {
             errorElement.textContent = error.message;
             errorElement.style.display = 'flex';
+            if (!errorElement.id) {
+                errorElement.id = `${error.path.replace(/[^a-zA-Z0-9_-]/g, '-')}-error`;
+            }
         }
         control.classList.add('error');
         control.setAttribute('aria-invalid', 'true');
         if (errorElement?.id) {
-            control.setAttribute('aria-describedby', errorElement.id);
+            addDescribedBy(control, errorElement.id);
         }
         return true;
     }
@@ -801,6 +1069,7 @@ window.HRMS_Validation = (function() {
         validateField,
         validateStep,
         validateAll,
+        validateControl,
         rules,
         showError,
         clearError,

@@ -336,6 +336,8 @@ window.HRMS_FileUpload = (function() {
 
                 if (onUploadSuccess) onUploadSuccess(result, file);
                 if (onFileSelect) onFileSelect(file, result);
+                window.HRMS_Validation?.validateControl(container);
+                window.HRMS_Wizard?.refreshValidationFeedback();
 
                 notifyUploadListeners({ type: 'file-saved-locally', file, result, documentType, container });
                 return true;
@@ -366,6 +368,8 @@ window.HRMS_FileUpload = (function() {
             updateUI(null);
             clearError(container);
             if (onFileRemove) onFileRemove();
+            window.HRMS_Validation?.validateControl(container);
+            window.HRMS_Wizard?.refreshValidationFeedback();
             notifyUploadListeners({ type: 'file-removed', documentType, container });
         }
 

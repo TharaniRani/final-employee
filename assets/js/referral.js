@@ -385,7 +385,7 @@ window.HRMS_Referral = (function() {
         if (schoolSelect) {
             const value = String(entry.school?.original_value || '');
             if (value && !Array.from(schoolSelect.options).some(option => option.value === value)) {
-                schoolSelect.add(new Option(`${value} (stored value)`, value));
+                schoolSelect.add(new Option(value, value));
             }
             schoolSelect.value = value;
             schoolSelect.dataset.index = index;
@@ -441,15 +441,63 @@ window.HRMS_Referral = (function() {
 
         selects.forEach(select => {
             const currentValue = select.value;
-            if (select.options.length <= 1) {
-                schools.forEach(school => {
-                    const option = document.createElement('option');
-                    option.value = school;
-                    option.textContent = school;
-                    select.appendChild(option);
-                });
-            }
+            const availableSchools = new Set(
+                Array.from(select.options, option => option.value)
+            );
+            schools.forEach(school => {
+                if (availableSchools.has(school)) return;
+                select.add(new Option(school, school));
+                availableSchools.add(school);
+            });
             select.value = currentValue;
+        });
+    }
+
+    function syncFamilyStudyingFields(submissionData = null) {
+        if (!fsContainer) return;
+
+        fsContainer.querySelectorAll('.family-studying-item').forEach(item => {
+            const id = item.dataset.id;
+            if (!id) return;
+
+            const entries = state.get('referral.family_studying_details') || [];
+            const entryIndex = entries.findIndex(student => student.id === id);
+            const entry = entries[entryIndex];
+            const submissionEntry = submissionData?.referral?.family_studying_details?.find(
+                student => student.id === id
+            );
+            if (!entry) return;
+
+            const updates = {};
+            [
+                ['name', 'input[name="family_studying_name[]"]'],
+                ['school', 'select[name="family_studying_school[]"]'],
+                ['class', 'input[name="family_studying_class[]"]']
+            ].forEach(([field, selector]) => {
+                const control = item.querySelector(selector);
+                if (!control) return;
+
+                const currentValue = control.value;
+                if (currentValue !== (entry[field]?.original_value || '')) {
+                    updates[field] = {
+                        original_value: currentValue,
+                        verification: 'pending',
+                        corrected_value: null
+                    };
+                }
+                if (submissionEntry) {
+                    submissionEntry[field] = {
+                        ...(submissionEntry[field] || {}),
+                        original_value: currentValue,
+                        verification: 'pending',
+                        corrected_value: null
+                    };
+                }
+            });
+
+            if (Object.keys(updates).length > 0) {
+                state.updateFamilyStudying(id, updates);
+            }
         });
     }
 
@@ -511,6 +559,7 @@ window.HRMS_Referral = (function() {
     }
 
     return {
-        init
+        init,
+        syncFamilyStudyingFields
     };
 })();

@@ -91,10 +91,6 @@ try {
     $resubmissionOf = $rejected->fetchColumn();
     $resubmissionOf = $resubmissionOf === false ? null : (int) $resubmissionOf;
 
-    $referenceNumber = 'EMP-' . date('Ymd') . '-' . str_pad((string) $employeeId, 6, '0', STR_PAD_LEFT) . '-' . strtoupper(bin2hex(random_bytes(3)));
-    $submissionData = buildSubmissionJson($pdo, $employeeId, $formData, $mobile, $referenceNumber, $submittedAt);
-    $encodedFormData = json_encode($submissionData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
     $stmt = $pdo->prepare("
         SELECT id
         FROM employee_form_submissions
@@ -107,6 +103,20 @@ try {
     $draftId = $stmt->fetchColumn();
 
     if ($draftId !== false) {
+        $submissionId = (int) $draftId;
+        $referenceNumber = 'REF-' . str_pad((string) $submissionId, 6, '0', STR_PAD_LEFT);
+        $submissionData = buildSubmissionJson(
+            $pdo,
+            $employeeId,
+            $formData,
+            $mobile,
+            $referenceNumber,
+            $submittedAt
+        );
+        $encodedFormData = json_encode(
+            $submissionData,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
         $stmt = $pdo->prepare("
             UPDATE employee_form_submissions
             SET mobile = ?, form_data = ?, status = 'pending',
@@ -114,15 +124,40 @@ try {
             WHERE id = ? AND employee_id = ? AND status = 'draft'
         ");
         $stmt->execute([$mobile, $encodedFormData, $referenceNumber, $resubmissionOf, $draftId, $employeeId]);
-        $submissionId = (int) $draftId;
     } else {
+        $temporaryReference = 'TMP-' . strtoupper(bin2hex(random_bytes(16)));
         $stmt = $pdo->prepare("
             INSERT INTO employee_form_submissions
                 (employee_id, mobile, form_data, status, reference_number, resubmission_of, submitted_at, created_at, updated_at)
             VALUES (?, ?, ?, 'pending', ?, ?, NOW(), NOW(), NOW())
         ");
-        $stmt->execute([$employeeId, $mobile, $encodedFormData, $referenceNumber, $resubmissionOf]);
+        $stmt->execute([
+            $employeeId,
+            $mobile,
+            json_encode($formData, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            $temporaryReference,
+            $resubmissionOf
+        ]);
         $submissionId = (int) $pdo->lastInsertId();
+        $referenceNumber = 'REF-' . str_pad((string) $submissionId, 6, '0', STR_PAD_LEFT);
+        $submissionData = buildSubmissionJson(
+            $pdo,
+            $employeeId,
+            $formData,
+            $mobile,
+            $referenceNumber,
+            $submittedAt
+        );
+        $encodedFormData = json_encode(
+            $submissionData,
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        );
+        $stmt = $pdo->prepare("
+            UPDATE employee_form_submissions
+            SET reference_number = ?, form_data = ?, updated_at = NOW()
+            WHERE id = ? AND employee_id = ? AND status = 'pending'
+        ");
+        $stmt->execute([$referenceNumber, $encodedFormData, $submissionId, $employeeId]);
     }
 
     $changedFields = stageSubmissionRows($pdo, $employeeId, $submissionId, $submissionData);
@@ -162,6 +197,7 @@ try {
     $pdo->commit();
 
     // Clear draft status
+    $_SESSION['login_mobile_prefill'] = $mobile;
     unset($_SESSION['verified_employee_id']);
     unset($_SESSION['verified_mobile']);
 

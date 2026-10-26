@@ -154,32 +154,31 @@
             }
         });
 
-        // Handle form inputs for real-time validation
+        const refreshFieldValidation = (target) => {
+            if (!(target instanceof HTMLElement) || !target.closest('.wizard-step')) return;
+            const validationResult = window.HRMS_Validation?.validateControl(target);
+            if (validationResult !== null && validationResult !== undefined) {
+                window.HRMS_Wizard?.refreshValidationFeedback();
+            }
+        };
+
+        // Revalidate previously invalid fields as their values change.
         document.addEventListener('input', (e) => {
             const target = e.target;
-            if (target.matches('.form-input, .form-select, .form-textarea')) {
-                // Clear error on input
-                if (target.classList.contains('error')) {
-                    const errorId = target.id + '-error';
-                    const errorEl = document.getElementById(errorId) ||
-                        target.closest('.form-group')?.querySelector('.form-error');
-                    if (errorEl) {
-                        errorEl.textContent = '';
-                        errorEl.style.display = 'none';
-                    }
-                    target.classList.remove('error');
-                    target.removeAttribute('aria-invalid');
-                    target.removeAttribute('aria-describedby');
-                }
+            if (target instanceof HTMLElement &&
+                target.matches('.form-input, .form-select, .form-textarea') &&
+                (target.classList.contains('error') || target.getAttribute('aria-invalid') === 'true')) {
+                Promise.resolve().then(() => refreshFieldValidation(target));
             }
         }, true);
 
-        // Handle blur for validation
+        // Validate every supported field when it loses focus.
         document.addEventListener('blur', (e) => {
-            const target = e.target;
-            if (target.matches('.form-input[required], .form-select[required], .form-textarea[required]')) {
-                // Could add real-time validation here if needed
-            }
+            refreshFieldValidation(e.target);
+        }, true);
+
+        document.addEventListener('change', (e) => {
+            refreshFieldValidation(e.target);
         }, true);
 
         // Handle modal backdrop clicks

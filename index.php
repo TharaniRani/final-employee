@@ -32,6 +32,11 @@ $wizardStepKeys = array_values(array_filter($stepKeys, static function ($key) {
 }));
 $currentStep = $_GET['step'] ?? 'mobile-verification';
 $isMobileVerification = $currentStep === 'mobile-verification';
+$loginMobilePrefill = '';
+if ($isMobileVerification) {
+    $loginMobilePrefill = (string) ($_SESSION['login_mobile_prefill'] ?? '');
+    unset($_SESSION['login_mobile_prefill']);
+}
 $currentStepIndex = $isMobileVerification
     ? 0
     : array_search($currentStep, $wizardStepKeys);
@@ -150,11 +155,11 @@ $showStepper = !$isMobileVerification;
                 <span>Madras Seva Sadan</span>
             </div>
             <p class="footer-text">&copy; 2026 Madras Seva Sadan. All rights reserved.</p>
-            <nav class="footer-links" aria-label="Footer navigation">
+            <!-- <nav class="footer-links" aria-label="Footer navigation">
                 <a href="#" class="footer-link">Privacy Policy</a>
                 <a href="#" class="footer-link">Terms of Service</a>
                 <a href="#" class="footer-link">Contact HR</a>
-            </nav>
+            </nav> -->
         </div>
     </footer>
 

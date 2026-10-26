@@ -320,8 +320,8 @@ function buildSubmissionReferralRows(PDO $pdo, int $employeeId, array $referral)
     $rows = [];
 
     for ($index = 0; $index < $rowCount; $index++) {
-        $workingMember = $working[$index] ?? [];
-        $student = $students[$index] ?? [];
+        $workingMember = is_array($working[$index] ?? null) ? $working[$index] : [];
+        $student = is_array($students[$index] ?? null) ? $students[$index] : [];
         $workingStatus = (string) ($referral['family_members_working'] ?? 'No');
         $studyingStatus = (string) ($referral['family_members_studying'] ?? 'No');
         $rows[] = array_replace($baseline, [
@@ -331,13 +331,15 @@ function buildSubmissionReferralRows(PDO $pdo, int $employeeId, array $referral)
             'working_tmss_id' => (string) ($workingMember['tmss_id'] ?? ''),
             'working_name' => (string) ($workingMember['name'] ?? ''),
             'working_unit' => $workingStatus === 'Yes'
-                ? submissionUnitText($workingMember['unit'] ?? '', $baseline['working_unit'] ?? '')
+                ? ($workingMember
+                    ? submissionUnitText($workingMember['unit'] ?? '', $baseline['working_unit'] ?? '')
+                    : '')
                 : (string) ($baseline['working_unit'] ?? ''),
             'working_designation' => (string) ($workingMember['designation'] ?? ''),
             'family_members_studying' => $studyingStatus,
             'student_name' => (string) ($student['name'] ?? ''),
             'student_unit' => $studyingStatus === 'Yes'
-                ? submissionSchoolText($student['school'] ?? '', '')
+                ? ($student ? submissionSchoolText($student['school'] ?? '', '') : '')
                 : (string) ($baseline['student_unit'] ?? ''),
             'student_class' => (string) ($student['class'] ?? '')
         ]);

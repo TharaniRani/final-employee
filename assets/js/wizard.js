@@ -681,7 +681,18 @@ window.HRMS_Wizard = (function() {
         return true;
     }
 
-    function showValidationSummary(stepElement, errors) {
+    function refreshValidationFeedback() {
+        const stepElement = document.getElementById(`step-${currentStep}`);
+        const summary = stepElement?.querySelector('.validation-summary');
+        if (!summary || summary.hidden) return;
+
+        const errors = validation.validateStep(currentStep, state.getState());
+        showValidationSummary(stepElement, errors, false);
+        const currentStepperItem = document.querySelector(`.stepper-item[data-step="${currentStep}"]`);
+        currentStepperItem?.classList.toggle('error', errors.length > 0);
+    }
+
+    function showValidationSummary(stepElement, errors, shouldFocus = true) {
         if (!stepElement) return;
 
         const form = stepElement.querySelector('form');
@@ -715,7 +726,7 @@ window.HRMS_Wizard = (function() {
         }));
         summary.hidden = errors.length === 0;
 
-        if (errors.length > 0) {
+        if (errors.length > 0 && shouldFocus) {
             summary.focus();
             summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -844,6 +855,7 @@ window.HRMS_Wizard = (function() {
         getCurrentStepIndex: () => currentStepIndex,
         getStepKeys: () => stepKeys,
         validateAndProceed,
+        refreshValidationFeedback,
         saveDraft,
         isStepCompleted,
         getStepCompletionStatus,

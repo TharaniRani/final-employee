@@ -18,6 +18,7 @@ window.HRMS_Review = (function() {
     const successScreen = document.getElementById('step-success');
     const downloadBtn = document.getElementById('download-acknowledgement');
     const newFormBtn = document.getElementById('start-new-form');
+    const successCloseBtn = document.getElementById('success-close');
 
     let initialized = false;
     let isSubmitting = false;
@@ -40,6 +41,12 @@ window.HRMS_Review = (function() {
 
         if (newFormBtn) {
             newFormBtn.addEventListener('click', startNewForm);
+        }
+
+        if (successCloseBtn) {
+            successCloseBtn.addEventListener('click', () => {
+                window.location.href = window.HRMS_CONFIG.basePath + '/index.php?step=mobile-verification';
+            });
         }
 
         attachFilePreviewModalListeners();
@@ -902,8 +909,12 @@ window.HRMS_Review = (function() {
             return;
         }
 
+        window.HRMS_Referral?.syncFamilyStudyingFields();
+        const validatedFormData = state.toJSON();
+        window.HRMS_Referral?.syncFamilyStudyingFields(validatedFormData);
+
         // Validate all steps
-        const errors = validation.validateAll(state.getState());
+        const errors = validation.validateAll(validatedFormData);
 
         if (errors.length > 0) {
             validation.showErrors(errors);
@@ -953,6 +964,7 @@ window.HRMS_Review = (function() {
 
         try {
             const formData = state.toJSON();
+            window.HRMS_Referral?.syncFamilyStudyingFields(formData);
             formData.submission.declaration = true;
             formData.submission.terms_accepted = true;
             formData.submission.status = 'pending';

@@ -277,6 +277,11 @@
 
 .btn-secondary:hover:not(:disabled) {
   background-color: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.btn-secondary:disabled {
+  color: var(--color-primary);
 }
 
 .btn-secondary:focus-visible {
@@ -572,6 +577,12 @@
 .radio-item:has(input:checked) {
   background-color: var(--color-bg-focus);
   border-color: var(--color-border-focus);
+}
+
+.checkbox-item:has(input.error),
+.radio-item:has(input.error) {
+  border-color: var(--color-border-error);
+  background-color: var(--color-error-light);
 }
 
 .checkbox-item input,
