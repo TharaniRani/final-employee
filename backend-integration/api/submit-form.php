@@ -523,6 +523,9 @@ function validateFormData(array $data, array $existingDocuments = [], array $exi
     ];
     foreach ($employmentFields as $field => $label) {
         $change = $data['employment_details'][$field]['change'] ?? '';
+        if ($change === '') {
+            continue;
+        }
         if (!in_array($change, ['Yes', 'No'], true)) {
             $errors[] = [
                 'field' => 'employment_details.' . $field . '.change',

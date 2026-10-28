@@ -9,6 +9,7 @@ window.HRMS_Review = (function() {
     const validation = window.HRMS_Validation;
     const api = window.HRMS_API;
     const fileUpload = window.HRMS_FileUpload;
+    const config = window.HRMS_CONFIG;
 
     const reviewContainer = document.getElementById('review-summary');
     const submitBtn = document.getElementById('review-submit');
@@ -145,6 +146,7 @@ window.HRMS_Review = (function() {
                     { key: 'next_of_kin.manual_name', label: 'Manual NOK Name', type: 'simple', condition: (s) => getEffectiveValue(s.next_of_kin?.name_source) === 'manual' },
                     { key: 'next_of_kin.contact', label: 'NOK Contact No.', type: 'verification' },
                     { key: 'next_of_kin.is_emergency', label: 'Is Emergency Contact', type: 'simple' },
+                    { key: 'next_of_kin.emergency_contact', label: 'Emergency Contact No.', type: 'verification', condition: (s) => getEffectiveValue(s.next_of_kin?.is_emergency) === 'No' },
                     { key: 'next_of_kin.address.address_line1', label: 'NOK Address Line 1', type: 'verification' },
                     { key: 'next_of_kin.address.address_line2', label: 'NOK Address Line 2', type: 'verification' },
                     { key: 'next_of_kin.address.address_line3', label: 'NOK Address Line 3', type: 'verification' },
@@ -217,6 +219,7 @@ window.HRMS_Review = (function() {
         ];
 
         sections.forEach(section => {
+            if (section.id === 'employment-details' && config.hideEmploymentDetails) return;
             const sectionHtml = renderSection(section, formState);
             if (sectionHtml) {
                 html += sectionHtml;

@@ -203,6 +203,7 @@ window.HRMS_Education = (function() {
                 state.updateEducation(entry.id, {
                     qualification_type: { original_value: value, verification: 'pending', corrected_value: null }
                 });
+                validation.validateControl(typeSelect);
 
                 // Show/hide others fields
                 const othersFields = item.querySelector('.education-others-fields');

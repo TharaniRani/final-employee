@@ -92,3 +92,35 @@ function getDatabaseConnection(): PDO
 
     return $connection;
 }
+
+function getAdminDatabaseConnection(): PDO
+{
+    static $connection = null;
+
+    if ($connection instanceof PDO) {
+        return $connection;
+    }
+
+    $config = $GLOBALS['HRMS_DATABASE_CONFIG'];
+    $host = getenv('ADMIN_DB_HOST') ?: $config['host'];
+    $port = filter_var(getenv('ADMIN_DB_PORT') ?: (string) $config['port'], FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1, 'max_range' => 65535]
+    ]);
+    if ($port === false) {
+        throw new RuntimeException('ADMIN_DB_PORT must be a valid TCP port number');
+    }
+
+    $database = getenv('ADMIN_DB_NAME') ?: 'careerportal';
+    if (!preg_match('/^[A-Za-z0-9_]+$/', $database)) {
+        throw new RuntimeException('ADMIN_DB_NAME must be a valid database name');
+    }
+
+    $connection = new PDO(
+        sprintf('mysql:host=%s;port=%d;dbname=%s;charset=%s', $host, $port, $database, $config['charset']),
+        getenv('ADMIN_DB_USER') === false ? $config['username'] : getenv('ADMIN_DB_USER'),
+        getenv('ADMIN_DB_PASS') === false ? $config['password'] : getenv('ADMIN_DB_PASS'),
+        $config['options']
+    );
+
+    return $connection;
+}

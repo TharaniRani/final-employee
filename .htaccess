@@ -1,0 +1,4 @@
+Options -MultiViews
+RewriteEngine On
+RewriteRule ^admin/employees/view/([0-9]+)/?$ admin-employee.php?submission_id=$1 [L,QSA]
+RewriteRule ^admin(?:/.*)?$ hr-review.php [L,QSA]

@@ -114,8 +114,10 @@ HRMS-form/
    by git; do not commit it or put production secrets in `.env.example`.
 
    Supported settings are `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`,
-   `DB_CHARSET`, and `OTP_EXPIRY_MINUTES`. Environment variables supplied by
-   Apache/the hosting platform take precedence over values from `.env`.
+   `DB_CHARSET`, `ADMIN_DB_NAME`, `ADMIN_DB_HOST`, `ADMIN_DB_PORT`,
+   `ADMIN_DB_USER`, `ADMIN_DB_PASS`, and `OTP_EXPIRY_MINUTES`. Environment
+   variables supplied by Apache/the hosting platform take precedence over values
+   from `.env`.
 
    OTP delivery is currently local-development-only because no SMS provider is
    configured. From a loopback request on `localhost`, the generated OTP is
@@ -158,35 +160,42 @@ HRMS-form/
    to the permanent and temporary document folders is denied. Previously saved
    submission JSON is not rewritten automatically.
 
-   To review submissions locally, open `http://localhost/curosr-employee/hr-review.php`.
-   Configure `HR_LOGIN_USERNAME`, `HR_LOGIN_PASSWORD_HASH`, `HR_REVIEWER_ID`, and
-   `HR_REVIEWER_NAME` in the ignored project `.env` file. Generate the password
-   hash with `php -r "echo password_hash('your-password', PASSWORD_DEFAULT), PHP_EOL;"`;
-   never put a plaintext password in PHP source or commit it. Sign-in is
-   localhost-only by default, limits repeated failed attempts, and regenerates
-   the session ID after authentication. Keep that local-only setting enabled
-   unless production HTTPS, access controls, and an organization-approved
-   authentication method are configured.
+   Open the shared HR/School Admin workspace at
+   `http://localhost/final-employee/admin` (or `hr-review.php` if URL rewriting is
+   unavailable). Sign in with an active account from the `careerportal.admins`
+   table. The account role is read from `user_roles`; School Admin access is
+   limited to the unit assigned through `admins.unit_id`. HR Head, HR Processor,
+   and HR Executive accounts can review submissions across units.
 
-   The HR dashboard searches by employee ID, employee name, mobile number, or
-   submission ID and filters by request status and the employee's current unit.
-   Its request cards use employee and employment data from the finalized tables.
-   Opening a request shows only fields or repeatable sections recorded as changed,
-   in a compact table with original and requested values; the full submission JSON
-   is not displayed. Original values are snapshotted in the existing submission
-   JSON metadata at submit time so approved request history remains comparable;
-   no new table is needed. HR reviews changed fields one category at a time and
-   can approve or reject a single field or selected fields. Each decision is
-   saved in the existing submission JSON and logged to `form_submission_logs`;
-   approved values are applied to the original employee rows in the same
-   transaction, while rejected values never change those rows. A request stays
-   pending until every changed field is reviewed, then receives its final
-   approved or rejected status. HR can reject the entire request before any
-   fields have been approved. A changed repeatable section is one selectable
-   change; approving it replaces all existing rows for that employee in that
-   section with the reviewed submission version. For older pending requests
-   without changed-field metadata, the review API snapshots the original values
-   before the first stepwise decision and then preserves the differences.
+   Employee records and staged submissions remain in the employee database
+   configured by `DB_NAME` (the local project default is `final`). Admin accounts
+   and units are read from `careerportal` using the same connection settings by
+   default. Set `ADMIN_DB_NAME`, and optionally `ADMIN_DB_HOST`, `ADMIN_DB_PORT`,
+   `ADMIN_DB_USER`, and `ADMIN_DB_PASS`, when the administrator database uses a
+   separate connection. Account emails and roles are never hardcoded in the app.
+   Existing legacy plaintext passwords are upgraded to `password_hash()` hashes
+   after a successful sign-in; subsequent sign-ins use `password_verify()`.
+   Inactive accounts and the `candidate` role cannot sign in. Failed sign-ins
+   are rate-limited, and successful login/logout rotates the session ID.
+
+   The responsive dashboard searches employee name, email, employee ID, and
+   mobile, and filters by status and unit. Counts and table rows use the actual
+   `employee_form_submissions` data. A submission opens a detail page showing the
+   employee profile, original/requested correction values, status, and uploaded
+   documents. Approving a submission applies its staged changes in the existing
+   transaction and records the action in the audit log. School Admin unit
+   restrictions are checked by the queue, review, and document endpoints.
+   The Admin dashboard lists pending and approved submissions only. Any older
+   rejected-status rows remain unchanged in the database and are not listed;
+   the Admin module no longer offers a rejection or return action.
+
+   Administrator edits to fields included in the open submission update that
+   submission's staged value so the employee record changes only when approved.
+   Other direct edits apply immediately to finalized employee records. Both are
+   recorded with the changed value, actor, role, and timestamp in
+   `admin_employee_change_history`. Before using this feature, apply
+   `backend-integration/config/migrations/005-admin-employee-change-history.sql`
+   to the employee database once. No unchanged value is written to history.
 
    To enable append-only submission staging on an existing database, apply
    `backend-integration/config/migrations/001-add-submission-version-linkage.sql`
@@ -210,37 +219,22 @@ HRMS-form/
    and are then stored in the existing `assets/requests/employees/` folders.
    Earlier `uploads/documents/` files and employee-ID-only folders remain
    readable for compatibility with older submissions.
-   HR approve/reject endpoints are intentionally
-   protected by the existing HR login session. The HR application must set
-   `$_SESSION['user_role']` to `HR`, `$_SESSION['hr_user_id']` to a numeric
-   reviewer ID, and `$_SESSION['hr_user_name']` to the reviewer display name.
-   Use `GET /backend-integration/api/review-submission.php?limit=50` with the
-   session CSRF token to list pending submissions, then `POST` JSON to that
-   endpoint with `submission_id` and a decision. Stepwise approval uses
-   `decision: "approve_fields"` with an `approved_fields` array; rejecting
-   selected changes uses `decision: "reject_fields"` with a `rejected_fields`
-   array and `rejection_reason`. Whole-request rejection uses
-   `decision: "reject"` and `rejection_reason`. The existing `approve` decision
-   remains supported for completing a request in one operation. For example:
+   The Admin approval endpoint is protected by the shared Admin/HR session.
+   Use `GET /backend-integration/api/review-submission.php?status=pending&page=1`
+   with the session CSRF token to list pending submissions, then `POST` JSON to
+   that endpoint to approve the complete submission. Corrections can be edited
+   from the employee detail page before approval. For example:
 
    ```json
    {
      "submission_id": 123,
-     "decision": "approve_fields",
-     "approved_fields": ["employee_contact.personal_email"],
-     "review_notes": "Verified"
+     "decision": "approve"
    }
    ```
 
-   Scalar approval keys use `table.column` from the existing table schema.
-   Repeatable sections can be approved as `employee_referrals.all`,
-   `educational_qualifications.all`, or `employee_previous_experience.all`;
-   approving one replaces that section's original rows with the submitted
-   version. Field-level decisions are retained in the submission metadata, so
-   already-reviewed fields cannot be applied or rejected again. Rejection
-   records the reason and reviewer but never changes original employee tables.
-   No HR login page is included in this employee-facing project;
-   the endpoint depends on the organization's existing authenticated HR session.
+   Approval applies all staged scalar fields and changed repeatable sections,
+   then records the administrator account and approval timestamp. School Admin
+   requests are checked against the assigned unit on every read and write.
 
 ### Test the document approval workflow locally
 
@@ -252,14 +246,12 @@ HRMS-form/
    form and confirm their files are in
    `employees_temp_documents/<category>/<employee-id>/` and their
    `employee_documents.file_path` values are relative paths under that folder.
-3. Sign in to the HR review page using the configured local HR account. Approve
-   the corresponding `employee_identification.<column>` field or
-   `educational_qualifications.all` section. Confirm the new file is moved to
+3. Sign in to the HR review page using the configured local HR account. Open
+   the employee submission and approve it from the bottom of the profile page.
+   Confirm the new file is moved to
    `assets/requests/employees/<category>/`, the permanent database path is
    relative, and the original filename/path was not overwritten.
-4. Submit another replacement and reject that field. Confirm the original
-   `employee_identification` or education certificate path is unchanged.
-   Directly opening a file URL under either document folder should be denied;
+4. Directly opening a file URL under either document folder should be denied;
    viewing existing employee files should work only through the authenticated
    endpoint.
 

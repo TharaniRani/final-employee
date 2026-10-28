@@ -10,14 +10,13 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/secure-session.php';
 require_once __DIR__ . '/../config/submission-staging.php';
 require_once __DIR__ . '/../config/document-storage.php';
+require_once __DIR__ . '/../config/admin-auth.php';
 startSecureSession();
 
-if (($_SESSION['user_role'] ?? '') !== 'HR' ||
-    !is_scalar($_SESSION['hr_user_id'] ?? null) ||
-    trim((string) ($_SESSION['hr_user_id'] ?? '')) === '' ||
-    trim((string) ($_SESSION['hr_user_name'] ?? '')) === '') {
+$admin = currentAdminUser();
+if ($admin === null) {
     http_response_code(403);
-    exit('HR reviewer authorization is required.');
+    exit('Admin authorization is required.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
@@ -30,15 +29,20 @@ $submissionId = filter_var($_GET['submission_id'] ?? null, FILTER_VALIDATE_INT, 
     'options' => ['min_range' => 1]
 ]);
 $field = $_GET['field'] ?? '';
+$document = $_GET['document'] ?? '';
 $side = $_GET['side'] ?? '';
 $rowIndex = filter_var($_GET['row'] ?? 0, FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 0, 'max_range' => 100]
 ]);
 $column = $_GET['column'] ?? '';
 
-if ($submissionId === false || !is_string($field) ||
-    !in_array($side, ['original', 'requested'], true) || $rowIndex === false ||
-    !is_string($column)) {
+if ($submissionId === false || !is_string($field) || !is_string($document) ||
+    ($document === '' && !in_array($side, ['original', 'requested'], true)) ||
+    ($document !== '' && !in_array($document, [
+        'resume', 'aadhaar', 'pan', 'photo', 'signature', 'bed', 'driving',
+        'police_verification', 'other_document', 'ccs', 'education_certificate',
+        'experience_letter', 'experience_payslip'
+    ], true)) || $rowIndex === false || !is_string($column)) {
     http_response_code(400);
     exit('Invalid document preview request.');
 }
@@ -48,7 +52,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT employee_id, status, form_data, approved_fields
         FROM employee_form_submissions
-        WHERE id = ? AND status IN ('pending', 'approved', 'rejected')
+        WHERE id = ? AND status IN ('pending', 'approved')
     ");
     $stmt->execute([$submissionId]);
     $submission = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -56,21 +60,13 @@ try {
         http_response_code(404);
         exit('Submission not found.');
     }
+    if (!submissionIsInAdminScope($pdo, (int) $submissionId, $admin)) {
+        http_response_code(403);
+        exit('You are not authorized to view this employee document.');
+    }
 
     $employeeId = (int) $submission['employee_id'];
     $formData = json_decode($submission['form_data'], true, 512, JSON_THROW_ON_ERROR);
-    $changedFields = previewSubmissionChangedFields(
-        $pdo,
-        $formData,
-        $employeeId,
-        (int) $submissionId,
-        (string) $submission['status'],
-        $submission['approved_fields']
-    );
-    if (!in_array($field, $changedFields, true)) {
-        http_response_code(403);
-        exit('This document is not part of the reviewed changes.');
-    }
 
     $scalarDocuments = [
         'employee_identification.aadhar_copy' => ['temp_employee_identification', 'employee_identification', 'id', 'id', 'aadhar_copy'],
@@ -92,7 +88,29 @@ try {
     ];
     $documentPath = null;
 
-    if (isset($scalarDocuments[$field])) {
+    if ($document !== '') {
+        $documentPath = submissionDocumentPathFromFormData(
+            $formData,
+            $document,
+            (int) $rowIndex,
+            $column
+        );
+    } else {
+        $changedFields = previewSubmissionChangedFields(
+            $pdo,
+            $formData,
+            $employeeId,
+            (int) $submissionId,
+            (string) $submission['status'],
+            $submission['approved_fields']
+        );
+        if (!in_array($field, $changedFields, true)) {
+            http_response_code(403);
+            exit('This document is not part of the reviewed changes.');
+        }
+    }
+
+    if ($document === '' && isset($scalarDocuments[$field])) {
         if ($column !== '') {
             http_response_code(400);
             exit('Invalid document field.');
@@ -122,7 +140,7 @@ try {
                 $documentPath = $stmt->fetchColumn();
             }
         }
-    } elseif (isset($collectionDocuments[$field])) {
+    } elseif ($document === '' && isset($collectionDocuments[$field])) {
         [$stagingTable, $originalTable, $primaryKey, $documentColumns] = $collectionDocuments[$field];
         if (!in_array($column, $documentColumns, true)) {
             http_response_code(400);
@@ -156,7 +174,7 @@ try {
             $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $documentPath = $rows[$rowIndex] ?? null;
         }
-    } else {
+    } elseif ($document === '') {
         http_response_code(400);
         exit('This field is not a document.');
     }
@@ -188,6 +206,65 @@ try {
     error_log('HR document preview failed: ' . $e->getMessage());
     http_response_code(500);
     exit('Unable to preview this document.');
+}
+
+function submissionDocumentPathFromFormData(array $formData, string $document, int $rowIndex, string $column): ?string
+{
+    $scalarPaths = [
+        'resume' => $formData['documents']['resume']['file_path'] ?? null,
+        'aadhaar' => $formData['documents']['aadhaar']['file_path'] ?? null,
+        'pan' => $formData['documents']['pan']['file_path'] ?? null,
+        'photo' => $formData['personal_details']['photo_file_path'] ?? null,
+        'signature' => $formData['personal_details']['signature_file_path'] ?? null,
+        'bed' => $formData['teacher_details']['document_file_path'] ?? null
+    ];
+    if (array_key_exists($document, $scalarPaths)) {
+        if ($column !== '') {
+            http_response_code(400);
+            exit('Invalid document field.');
+        }
+        $path = $scalarPaths[$document];
+        return is_string($path) ? $path : null;
+    }
+
+    if ($document === 'education_certificate') {
+        $allowedColumn = 'certificate_file_path';
+        $records = $formData['education'] ?? [];
+    } elseif (in_array($document, ['experience_letter', 'experience_payslip'], true)) {
+        $allowedColumn = $document === 'experience_letter'
+            ? 'experience_letter_file_path'
+            : 'pay_slip_file_path';
+        $records = $formData['work_experience'] ?? [];
+    } else {
+        $allowedColumn = 'file_path';
+        $records = $formData['other_documents'] ?? [];
+    }
+    if ($column !== $allowedColumn || !is_array($records) ||
+        !isset($records[$rowIndex]) || !is_array($records[$rowIndex])) {
+        http_response_code(400);
+        exit('Invalid document field.');
+    }
+
+    $record = $records[$rowIndex];
+    if ($document === 'driving' && ($record['type'] ?? '') !== 'driving_license') {
+        http_response_code(404);
+        exit('Document not found for this submission.');
+    }
+    if ($document === 'police_verification' && ($record['type'] ?? '') !== 'police_verification') {
+        http_response_code(404);
+        exit('Document not found for this submission.');
+    }
+    if ($document === 'ccs' && ($record['type'] ?? '') !== 'ccs') {
+        http_response_code(404);
+        exit('Document not found for this submission.');
+    }
+    if ($document === 'other_document' && isset($record['type'])) {
+        http_response_code(404);
+        exit('Document not found for this submission.');
+    }
+
+    $path = $record[$allowedColumn] ?? null;
+    return is_string($path) ? $path : null;
 }
 
 function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $storedPath): ?string
@@ -265,7 +342,32 @@ function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $stored
             is_file($candidate)) {
             return $candidate;
         }
-        return null;
+
+        $document = $pdo->prepare("
+            SELECT file_path, stored_name, document_type
+            FROM employee_documents
+            WHERE employee_id = ? AND stored_name = ?
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $document->execute([$employeeId, $matches[2]]);
+        $record = $document->fetch(PDO::FETCH_ASSOC);
+        if (!$record) {
+            return null;
+        }
+        $categorizedPath = submissionDocumentAbsolutePath(
+            $projectRoot,
+            $employeeId,
+            (string) $record['document_type'],
+            (string) $record['stored_name']
+        );
+        $resolvedPath = resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $categorizedPath);
+        if ($resolvedPath !== null) {
+            return $resolvedPath;
+        }
+        return is_string($record['file_path'])
+            ? resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $record['file_path'])
+            : null;
     }
 
     if (basename($relativePath) !== $relativePath) {

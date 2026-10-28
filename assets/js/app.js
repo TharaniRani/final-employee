@@ -178,7 +178,8 @@
         }, true);
 
         document.addEventListener('change', (e) => {
-            refreshFieldValidation(e.target);
+            const target = e.target;
+            Promise.resolve().then(() => refreshFieldValidation(target));
         }, true);
 
         // Handle modal backdrop clicks

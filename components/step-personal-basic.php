@@ -191,7 +191,7 @@ $stepIndex = $stepData['stepIndex'] ?? 0;
     </div>
 
     <div class="step-footer">
-        <span class="step-indicator">Step 1 of 11</span>
+        <span class="step-indicator">Step <?php echo $stepIndex + 1; ?> of <?php echo count($wizardStepKeys); ?></span>
         <div class="step-actions">
             <button type="button" class="btn btn-secondary" id="personal-basic-prev" disabled>Previous</button>
             <button type="button" class="btn btn-primary" id="personal-basic-next">

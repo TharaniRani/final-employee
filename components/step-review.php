@@ -1,9 +1,9 @@
 <?php
 /**
- * Step 11: Review and Submit
+ * Review and Submit
  */
 $isActive = $stepData['isActive'] ?? false;
-$stepIndex = $stepData['stepIndex'] ?? 10;
+$stepIndex = $stepData['stepIndex'] ?? 9;
 ?>
 <div class="wizard-step <?php echo $isActive ? 'active' : ''; ?>" id="step-review" data-step-index="<?php echo $stepIndex; ?>" role="tabpanel" aria-labelledby="step-review-title" <?php echo $isActive ? '' : 'hidden'; ?>>
     <div class="step-header">
@@ -73,7 +73,7 @@ $stepIndex = $stepData['stepIndex'] ?? 10;
     </div>
 
     <div class="step-footer">
-        <span class="step-indicator">Step 11 of 11</span>
+        <span class="step-indicator">Step <?php echo $stepIndex + 1; ?> of <?php echo count($wizardStepKeys); ?></span>
         <div class="step-actions">
             <button type="button" class="btn btn-secondary" id="review-prev">Previous</button>
             <button type="button" class="btn btn-primary btn-lg" id="review-submit">

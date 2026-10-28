@@ -159,7 +159,7 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
     </div>
 
     <div class="step-footer">
-        <span class="step-indicator">Step 6 of 11</span>
+        <span class="step-indicator">Step <?php echo $stepIndex + 1; ?> of <?php echo count($wizardStepKeys); ?></span>
         <div class="step-actions">
             <button type="button" class="btn btn-secondary" id="referral-prev">Previous</button>
             <button type="button" class="btn btn-primary" id="referral-next">
@@ -241,8 +241,10 @@ $stepIndex = $stepData['stepIndex'] ?? 5;
                 <div class="form-group">
                     <label class="form-label">School Name <span class="required-indicator" aria-hidden="true">*</span></label>
                     <select class="form-select" name="family_studying_school[]" required>
-                        <option value="">Select school</option>
+                        <!-- <option value="">Select school</option> -->
+                        <option value="">Loading unit names...</option>
                     </select>
+                    <div class="form-help family-studying-school-status" role="status" aria-live="polite" hidden></div>
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>

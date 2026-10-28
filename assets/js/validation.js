@@ -430,6 +430,10 @@ window.HRMS_Validation = (function() {
     }
 
     function validateStep(stepName, state) {
+        if (stepName === 'employment-details' && window.HRMS_CONFIG?.hideEmploymentDetails) {
+            return [];
+        }
+
         const errors = [];
 
         // Define which fields belong to each step

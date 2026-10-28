@@ -1,6 +1,6 @@
 <?php
 /**
- * Serves an employee's existing HRMS document after OTP verification.
+ * Serves an existing employee document after employee verification or authorized HR access.
  */
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store, private');
@@ -9,12 +9,34 @@ header('X-Frame-Options: SAMEORIGIN');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/secure-session.php';
 require_once __DIR__ . '/../config/document-storage.php';
+require_once __DIR__ . '/../config/admin-auth.php';
 startSecureSession();
 
-$employeeId = (int) ($_SESSION['verified_employee_id'] ?? 0);
-if ($employeeId < 1) {
-    http_response_code(401);
-    exit('Employee authentication is required.');
+$admin = currentAdminUser();
+if ($admin !== null) {
+    $employeeId = filter_var($_GET['employee_id'] ?? null, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1]
+    ]);
+    if ($employeeId === false) {
+        http_response_code(400);
+        exit('A valid employee ID is required.');
+    }
+    try {
+        if (!employeeIsInAdminScope(getDatabaseConnection(), (int) $employeeId, $admin)) {
+            http_response_code(404);
+            exit('Employee not found in your authorized unit.');
+        }
+    } catch (Throwable $e) {
+        error_log('Admin document authorization failed: ' . $e->getMessage());
+        http_response_code(500);
+        exit('Unable to authorize this document.');
+    }
+} else {
+    $employeeId = (int) ($_SESSION['verified_employee_id'] ?? 0);
+    if ($employeeId < 1) {
+        http_response_code(401);
+        exit('Employee authentication is required.');
+    }
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     header('Allow: GET');
@@ -28,31 +50,46 @@ if (!is_string($documentType)) {
     exit('Invalid document type.');
 }
 $identityColumns = [
-    'aadhaar' => ['aadhar_copy', 'aadhaar'],
-    'pan' => ['pan_copy', 'pan'],
-    'photo' => ['photo', 'photo'],
-    'resume' => ['resume', 'resume'],
-    'signature' => ['staff_sign', 'signature']
+    'aadhaar' => ['aadhar_copy', 'aadhaar', ['aadhaar', 'aadhar']],
+    'pan' => ['pan_copy', 'pan', ['pan']],
+    'photo' => ['photo', 'photo', ['photo']],
+    'resume' => ['resume', 'resume', ['resume']],
+    'signature' => ['staff_sign', 'signature', ['signature', 'staff_sign']],
+    'bed' => ['pg_degree_doc', 'bed', ['bed']],
+    'driving' => ['driving', 'driving', ['driving', 'driving_license']],
+    'police_verification' => ['others', 'police-verification', ['police_verification']],
+    'other_document' => ['others', 'other_document', ['other_document', 'others']],
+    'ccs' => ['ccs', 'ccs', ['ccs']]
 ];
 
 try {
     $pdo = getDatabaseConnection();
-    if ($documentType === 'education_certificate') {
+    if (in_array($documentType, ['education_certificate', 'experience_letter', 'experience_payslip'], true)) {
         $rowId = filter_var($_GET['row_id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1]
         ]);
         if ($rowId === false) {
             http_response_code(400);
-            exit('A valid qualification ID is required.');
+            exit('A valid document record ID is required.');
         }
-        $stmt = $pdo->prepare("
-            SELECT certificate_path
-            FROM educational_qualifications
-            WHERE id = ? AND employee_id = ?
-        ");
+        if ($documentType === 'education_certificate') {
+            $stmt = $pdo->prepare("
+                SELECT certificate_path
+                FROM educational_qualifications
+                WHERE id = ? AND employee_id = ?
+            ");
+            $folderType = 'education_certificate';
+        } else {
+            $column = $documentType === 'experience_letter' ? 'experience_letter_path' : 'pay_slip';
+            $stmt = $pdo->prepare("
+                SELECT `$column`
+                FROM employee_previous_experience
+                WHERE id = ? AND employee_id = ?
+            ");
+            $folderType = $documentType === 'experience_letter' ? 'experience_letter' : 'experience_payslip';
+        }
         $stmt->execute([$rowId, $employeeId]);
         $storedPath = $stmt->fetchColumn();
-        $folderType = 'education_certificate';
     } elseif (isset($identityColumns[$documentType])) {
         [$column, $folderType] = $identityColumns[$documentType];
         $stmt = $pdo->prepare("
@@ -81,14 +118,7 @@ try {
         ? null
         : resolveExistingEmployeeDocument(dirname(__DIR__, 2), $folderType, $storedPath);
     if ($filePath === null && isset($identityColumns[$documentType])) {
-        $documentTypes = [
-            'aadhaar' => ['aadhaar', 'aadhar'],
-            'pan' => ['pan'],
-            'photo' => ['photo'],
-            'resume' => ['resume'],
-            'signature' => ['signature', 'staff_sign']
-        ];
-        $aliases = $documentTypes[$documentType];
+        $aliases = $identityColumns[$documentType][2];
         $placeholders = implode(', ', array_fill(0, count($aliases), '?'));
         $documentStmt = $pdo->prepare("
             SELECT document_type, file_path
@@ -99,9 +129,16 @@ try {
         $documentStmt->execute([$employeeId, ...$aliases]);
         foreach ($documentStmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
             $documentTypeAlias = strtolower(str_replace('-', '_', (string) $document['document_type']));
+            $storageType = [
+                'aadhar' => 'aadhaar',
+                'staff_sign' => 'signature',
+                'driving_license' => 'driving',
+                'police_verification' => 'police-verification',
+                'others' => 'other_document'
+            ][$documentTypeAlias] ?? $documentTypeAlias;
             $filePath = resolveExistingEmployeeDocument(
                 dirname(__DIR__, 2),
-                $documentTypeAlias,
+                $storageType,
                 (string) ($document['file_path'] ?? '')
             );
             if ($filePath !== null) {

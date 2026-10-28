@@ -114,42 +114,113 @@ function submissionValuesEqual($original, $submitted, ?string $comparison = null
 function submissionOriginalValueSnapshots(PDO $pdo, int $employeeId, array $changedFields): array
 {
     $scalarTables = [
-        'employees' => ['employee_id', [
-            'date_of_birth', 'gender', 'marital_status', 'spouse_name', 'father_name',
-            'mother_name', 'blood_group', 'alumni_detail', 'alumni_unit'
-        ]],
-        'employee_contact' => ['contact_id', [
-            'personal_email', 'local_address', 'local_address1', 'local_address2',
-            'pincode', 'city', 'state', 'country', 'permanent_address',
-            'permanent_address1', 'permanent_address2', 'perm_pincode', 'perm_city',
-            'perm_state', 'perm_country', 'nok_name', 'nok_contact_no',
-            'nok_address', 'nok_emergency_no'
-        ]],
-        'employee_identification' => ['id', [
-            'aadhar_no', 'aadhar_copy', 'aadharlinked', 'pan_no', 'pan_copy',
-            'photo', 'resume', 'staff_sign', 'driving'
-        ]],
-        'employee_employment' => ['employment_id', [
-            'unit', 'branch', 'designation', 'employee_type', 'job_type',
-            'reporting_to', 'date_of_joining'
-        ]]
+        'employees' => [
+            'employee_id',
+            [
+                'date_of_birth',
+                'gender',
+                'marital_status',
+                'spouse_name',
+                'father_name',
+                'mother_name',
+                'blood_group',
+                'alumni_detail',
+                'alumni_unit'
+            ]
+        ],
+        'employee_contact' => [
+            'contact_id',
+            [
+                'personal_email',
+                'local_address',
+                'local_address1',
+                'local_address2',
+                'pincode',
+                'city',
+                'state',
+                'country',
+                'permanent_address',
+                'permanent_address1',
+                'permanent_address2',
+                'perm_pincode',
+                'perm_city',
+                'perm_state',
+                'perm_country',
+                'nok_name',
+                'nok_contact_no',
+                'nok_address',
+                'nok_emergency_no'
+            ]
+        ],
+        'employee_identification' => [
+            'id',
+            [
+                'aadhar_no',
+                'aadhar_copy',
+                'aadharlinked',
+                'pan_no',
+                'pan_copy',
+                'photo',
+                'resume',
+                'staff_sign',
+                'driving',
+                'pg_degree_status',
+                'pg_degree_institution',
+                'pg_degree_doc'
+            ]
+        ],
+        'employee_employment' => [
+            'employment_id',
+            [
+                'unit',
+                'branch',
+                'designation',
+                'employee_type',
+                'job_type',
+                'reporting_to',
+                'date_of_joining'
+            ]
+        ]
     ];
     $collectionTables = [
         'employee_referrals.all' => [
-            'employee_referrals', 'referral_id',
-            [// 'referral_source', 'referred_by', 'family_members_working', 'working_tmss_id',
-                'working_name', 'working_unit', 'working_designation', 'family_members_studying',
-                'student_name', 'student_unit', 'student_class']
+            'employee_referrals',
+            'referral_id',
+            [
+                'referred_by',
+                'family_members_working',
+                'working_name',
+                'working_unit',
+                'working_designation',
+                'family_members_studying',
+                'student_name',
+                'student_unit',
+                'student_class'
+            ]
         ],
         'educational_qualifications.all' => [
-            'educational_qualifications', 'id',
-            ['qualification_type', 'qualification_details', 'institution',
-                'completion_year', 'certificate_path']
+            'educational_qualifications',
+            'id',
+            [
+                'qualification_type',
+                'qualification_details',
+                'institution',
+                'completion_year',
+                'certificate_path'
+            ]
         ],
         'employee_previous_experience.all' => [
-            'employee_previous_experience', 'id',
-            ['company_name', 'role', 'start_date', 'end_date', 'experience_details',
-                'pay_slip', 'experience_letter_path']
+            'employee_previous_experience',
+            'id',
+            [
+                'company_name',
+                'role',
+                'start_date',
+                'end_date',
+                'experience_details',
+                'pay_slip',
+                'experience_letter_path'
+            ]
         ]
     ];
     $snapshots = [];
@@ -328,7 +399,6 @@ function buildSubmissionReferralRows(PDO $pdo, int $employeeId, array $referral)
             // 'referral_source' => (string) ($referral['referred_by']['source'] ?? ''),
             'referred_by' => (string) ($referral['referred_by']['name'] ?? ''),
             'family_members_working' => $workingStatus,
-            'working_tmss_id' => (string) ($workingMember['tmss_id'] ?? ''),
             'working_name' => (string) ($workingMember['name'] ?? ''),
             'working_unit' => $workingStatus === 'Yes'
                 ? ($workingMember
@@ -378,8 +448,7 @@ function stageSubmissionRows(
     int $submissionId,
     array $data,
     bool $persist = true
-): array
-{
+): array {
     $basic = $data['personal_basic'] ?? [];
     $address = $data['address'] ?? [];
     $documents = $data['documents'] ?? [];
@@ -399,8 +468,15 @@ function stageSubmissionRows(
         'alumni_unit' => (string) ($basic['alumni_school'] ?? '')
     ];
     $employeeFields = [
-        'date_of_birth', 'gender', 'marital_status', 'spouse_name', 'father_name',
-        'mother_name', 'blood_group', 'alumni_detail', 'alumni_unit'
+        'date_of_birth',
+        'gender',
+        'marital_status',
+        'spouse_name',
+        'father_name',
+        'mother_name',
+        'blood_group',
+        'alumni_detail',
+        'alumni_unit'
     ];
     $employeeChanges = getSubmissionTableChanges(
         $pdo,
@@ -437,10 +513,25 @@ function stageSubmissionRows(
         'nok_emergency_no' => (string) ($nok['emergency_contact_no'] ?? '')
     ];
     $contactFields = [
-        'personal_email', 'local_address', 'local_address1', 'local_address2', 'pincode',
-        'city', 'state', 'country', 'permanent_address', 'permanent_address1',
-        'permanent_address2', 'perm_pincode', 'perm_city', 'perm_state', 'perm_country',
-        'nok_name', 'nok_contact_no', 'nok_address', 'nok_emergency_no'
+        'personal_email',
+        'local_address',
+        'local_address1',
+        'local_address2',
+        'pincode',
+        'city',
+        'state',
+        'country',
+        'permanent_address',
+        'permanent_address1',
+        'permanent_address2',
+        'perm_pincode',
+        'perm_city',
+        'perm_state',
+        'perm_country',
+        'nok_name',
+        'nok_contact_no',
+        'nok_address',
+        'nok_emergency_no'
     ];
     $contactChanges = getSubmissionTableChanges(
         $pdo,
@@ -461,7 +552,12 @@ function stageSubmissionRows(
         'date_of_joining' => submissionDatabaseDate($employment['date_of_joining'] ?? '')
     ];
     $employmentFields = [
-        'unit', 'branch', 'designation', 'employee_type', 'job_type', 'reporting_to',
+        'unit',
+        'branch',
+        'designation',
+        'employee_type',
+        'job_type',
+        'reporting_to',
         'date_of_joining'
     ];
     $employmentChanges = getSubmissionTableChanges(
@@ -482,7 +578,14 @@ function stageSubmissionRows(
         'photo' => $personal['photo_file_path'] ?? null,
         'resume' => $documents['resume']['file_path'] ?? null,
         'staff_sign' => $personal['signature_file_path'] ?? null,
-        'driving' => null
+        'driving' => null,
+        'pg_degree_status' => $data['teacher_details']['bed_status'] ?? null,
+        'pg_degree_institution' => $data['teacher_details']['institution'] ?? null,
+        'pg_degree_doc' => in_array(
+            $data['teacher_details']['is_teacher'] ?? false,
+            [false, 0, '0', 'No', 'no'],
+            true
+        ) ? '' : ($data['teacher_details']['document_file_path'] ?? null)
     ];
     foreach (($data['other_documents'] ?? []) as $document) {
         if (($document['type'] ?? '') === 'driving_license') {
@@ -495,8 +598,18 @@ function stageSubmissionRows(
         }
     }
     $identificationFields = [
-        'aadhar_no', 'aadhar_copy', 'aadharlinked', 'pan_no', 'pan_copy',
-        'photo', 'resume', 'staff_sign', 'driving'
+        'aadhar_no',
+        'aadhar_copy',
+        'aadharlinked',
+        'pan_no',
+        'pan_copy',
+        'photo',
+        'resume',
+        'staff_sign',
+        'driving',
+        'pg_degree_status',
+        'pg_degree_institution',
+        'pg_degree_doc'
     ];
     $identificationChanges = getSubmissionTableChanges(
         $pdo,
@@ -509,9 +622,15 @@ function stageSubmissionRows(
 
     $referralRows = buildSubmissionReferralRows($pdo, $employeeId, $data['referral'] ?? []);
     $referralFields = [
-        // 'referral_source', 'referred_by', 'family_members_working', 'working_tmss_id',
-        'working_name', 'working_unit', 'working_designation', 'family_members_studying', 'student_name',
-        'student_unit', 'student_class'
+        'referred_by',
+        'family_members_working',
+        'working_name',
+        'working_unit',
+        'working_designation',
+        'family_members_studying',
+        'student_name',
+        'student_unit',
+        'student_class'
     ];
     $referralsChanged = submissionCollectionChanged(
         $pdo,
@@ -545,7 +664,10 @@ function stageSubmissionRows(
         ['certificate_path']
     );
 
-    $workExperience = $data['work_experience'] ?? [];
+    $workExperienceNotApplicable = !empty($data['work_experience_not_applicable']);
+    $workExperience = $workExperienceNotApplicable
+        ? []
+        : ($data['work_experience'] ?? []);
     foreach ($workExperience as $entry) {
         if (!is_array($entry)) {
             throw new DomainException('A work experience entry is invalid.');
@@ -567,8 +689,13 @@ function stageSubmissionRows(
         $employeeId,
         $experienceRows,
         [
-            'company_name', 'role', 'start_date', 'end_date', 'experience_details',
-            'pay_slip', 'experience_letter_path'
+            'company_name',
+            'role',
+            'start_date',
+            'end_date',
+            'experience_details',
+            'pay_slip',
+            'experience_letter_path'
         ],
         ['experience_letter_path']
     );

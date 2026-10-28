@@ -1,6 +1,6 @@
 <?php
 /**
- * HR-only queue and decision endpoint for employee form submissions.
+ * Admin/HR queue and decision endpoint for employee form submissions.
  */
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/secure-session.php';
 require_once __DIR__ . '/../config/submission-staging.php';
 require_once __DIR__ . '/../config/document-storage.php';
+require_once __DIR__ . '/../config/admin-auth.php';
 startSecureSession();
 
 $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -18,35 +19,80 @@ if (!$csrfToken || !hash_equals($_SESSION['csrf_token'] ?? '', $csrfToken)) {
     exit;
 }
 
-$reviewerId = $_SESSION['hr_user_id'] ?? null;
-$reviewerName = trim((string) ($_SESSION['hr_user_name'] ?? ''));
-if (($_SESSION['user_role'] ?? '') !== 'HR' || !is_scalar($reviewerId) ||
-    trim((string) $reviewerId) === '' || $reviewerName === '') {
+$admin = currentAdminUser();
+if ($admin === null) {
     http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'HR reviewer authorization is required']);
+    echo json_encode(['success' => false, 'message' => 'Admin authorization is required']);
     exit;
 }
+$reviewerId = $admin['id'];
+$reviewerName = $admin['name'];
+$actorType = $admin['role'] === 'school_admin' ? 'school_admin' : 'hr';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
         $pdo = getDatabaseConnection();
         $statusFilter = trim((string) ($_GET['status'] ?? 'pending'));
-        if (!in_array($statusFilter, ['all', 'pending', 'approved', 'rejected'], true)) {
+        if (!in_array($statusFilter, ['all', 'pending', 'approved'], true)) {
             throw new DomainException('The requested status filter is invalid.');
         }
         $unitFilter = trim((string) ($_GET['unit'] ?? ''));
+        $scopeUnitNames = [];
+        if (!adminCanAccessAllUnits($admin)) {
+            $scopeUnitNames = adminUnitEmploymentNames($admin);
+            if (!$scopeUnitNames) {
+                throw new DomainException('This School Admin account has no employee-unit access mapping.');
+            }
+            if ($unitFilter !== '' &&
+                $unitFilter !== $admin['unit_name'] &&
+                !in_array($unitFilter, $scopeUnitNames, true)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'You are not authorized to view this unit.']);
+                exit;
+            }
+            if ($unitFilter === $admin['unit_name']) {
+                $unitFilter = '';
+            }
+        }
         $search = trim((string) ($_GET['search'] ?? ''));
-        if (strlen($search) > 120 || strlen($unitFilter) > 255) {
-            throw new DomainException('The search or unit filter is too long.');
+        $submissionIdFilter = filter_var($_GET['submission_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1]
+        ]);
+        $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 50000]
+        ]);
+        if ($page === false || ($submissionIdFilter === false && isset($_GET['submission_id'])) ||
+            strlen($search) > 120 || strlen($unitFilter) > 255) {
+            throw new DomainException('The search, unit, or page filter is invalid.');
         }
 
-        $statusCounts = ['pending' => 0, 'approved' => 0, 'rejected' => 0];
-        $counts = $pdo->query("
-            SELECT status, COUNT(*) AS total
-            FROM employee_form_submissions
-            WHERE status IN ('pending', 'approved', 'rejected')
-            GROUP BY status
-        ");
+        $statusCounts = ['pending' => 0, 'approved' => 0];
+        if (adminCanAccessAllUnits($admin)) {
+            $counts = $pdo->query("
+                SELECT status, COUNT(*) AS total
+                FROM employee_form_submissions
+                WHERE status IN ('pending', 'approved')
+                GROUP BY status
+            ");
+        } else {
+            $scopeUnitPlaceholders = implode(', ', array_fill(0, count($scopeUnitNames), '?'));
+            $counts = $pdo->prepare("
+                SELECT s.status, COUNT(*) AS total
+                FROM employee_form_submissions s
+                LEFT JOIN employee_employment em
+                    ON em.employment_id = (
+                        SELECT em2.employment_id
+                        FROM employee_employment em2
+                        WHERE em2.employee_id = s.employee_id
+                        ORDER BY em2.employment_id DESC
+                        LIMIT 1
+                    )
+                WHERE s.status IN ('pending', 'approved')
+                  AND TRIM(COALESCE(em.unit, '')) IN ({$scopeUnitPlaceholders})
+                GROUP BY s.status
+            ");
+            $counts->execute($scopeUnitNames);
+        }
         foreach ($counts->fetchAll(PDO::FETCH_ASSOC) as $count) {
             $statusCounts[$count['status']] = (int) $count['total'];
         }
@@ -59,41 +105,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     WHERE em2.employee_id = s.employee_id
                 )
         ";
-        $unitsStmt = $pdo->query("
-            SELECT DISTINCT NULLIF(TRIM(em.unit), '') AS unit
-            FROM employee_form_submissions s
-            {$latestEmploymentJoin}
-            WHERE s.status IN ('pending', 'approved', 'rejected')
-              AND NULLIF(TRIM(em.unit), '') IS NOT NULL
-            ORDER BY unit
-        ");
-        $units = $unitsStmt->fetchAll(PDO::FETCH_COLUMN);
+        if (adminCanAccessAllUnits($admin)) {
+            $unitsStmt = $pdo->query("
+                SELECT DISTINCT TRIM(unit) AS unit
+                FROM employee_employment
+                WHERE unit IS NOT NULL AND TRIM(unit) <> ''
+                ORDER BY unit
+            ");
+            $units = array_values($unitsStmt->fetchAll(PDO::FETCH_COLUMN));
+        } else {
+            $units = $scopeUnitNames;
+        }
 
-        $where = ["s.status IN ('pending', 'approved', 'rejected')"];
+        $where = ["s.status IN ('pending', 'approved')"];
         $parameters = [];
+        if (!adminCanAccessAllUnits($admin)) {
+            $scopeUnitPlaceholders = implode(', ', array_fill(0, count($scopeUnitNames), '?'));
+            $where[] = "TRIM(COALESCE(em.unit, '')) IN ({$scopeUnitPlaceholders})";
+            array_push($parameters, ...$scopeUnitNames);
+        }
         if ($statusFilter !== 'all') {
             $where[] = 's.status = ?';
             $parameters[] = $statusFilter;
         }
         if ($unitFilter !== '') {
-            $where[] = 'em.unit = ?';
+            $where[] = 'TRIM(em.unit) = ?';
             $parameters[] = $unitFilter;
         }
+        if ($submissionIdFilter !== null && $submissionIdFilter !== false) {
+            $where[] = 's.id = ?';
+            $parameters[] = $submissionIdFilter;
+        }
         if ($search !== '') {
-            $where[] = "CONCAT_WS(' ', s.id, s.reference_number, s.employee_id, e.full_name, e.mss_employee_id, s.mobile) LIKE ?";
+            $where[] = "CONCAT_WS(' ', s.id, s.reference_number, s.employee_id, e.full_name, e.mss_employee_id, s.mobile, contact.personal_email) LIKE ?";
             $parameters[] = '%' . $search . '%';
         }
 
-        $stmt = $pdo->prepare("
-            SELECT s.id, s.employee_id, s.mobile, s.status, s.form_data, s.approved_fields,
-                   s.reference_number, s.submitted_at,
-                   e.full_name, e.mss_employee_id, em.unit
+        $latestContactJoin = "
+            LEFT JOIN employee_contact contact
+                ON contact.contact_id = (
+                    SELECT c2.contact_id
+                    FROM employee_contact c2
+                    WHERE c2.employee_id = s.employee_id
+                    ORDER BY c2.contact_id DESC
+                    LIMIT 1
+                )
+        ";
+        $whereSql = implode(' AND ', $where);
+        $totalStmt = $pdo->prepare("
+            SELECT COUNT(*)
             FROM employee_form_submissions s
             LEFT JOIN employees e ON e.employee_id = s.employee_id
             {$latestEmploymentJoin}
-            WHERE " . implode(' AND ', $where) . "
-            ORDER BY s.submitted_at DESC, s.id DESC
-            LIMIT 100
+            {$latestContactJoin}
+            WHERE {$whereSql}
+        ");
+        $totalStmt->execute($parameters);
+        $totalResults = (int) $totalStmt->fetchColumn();
+        $pageSize = 10;
+        $offset = ($page - 1) * $pageSize;
+        $stmt = $pdo->prepare("
+            SELECT s.id, s.employee_id, s.mobile, s.status, s.form_data, s.approved_fields,
+                   s.reference_number, s.submitted_at, s.updated_at,
+                   e.full_name, e.mss_employee_id, em.unit, em.designation,
+                   contact.personal_email
+            FROM employee_form_submissions s
+            LEFT JOIN employees e ON e.employee_id = s.employee_id
+            {$latestEmploymentJoin}
+            {$latestContactJoin}
+            WHERE {$whereSql}
+            ORDER BY CASE s.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+                     s.submitted_at DESC, s.id DESC
+            LIMIT {$pageSize} OFFSET {$offset}
         ");
         $stmt->execute($parameters);
         $submissions = [];
@@ -131,6 +214,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 array_intersect(array_keys($fieldDecisions), $allowedFields)
             )));
             $originalSnapshots = $formData['submission']['original_values'] ?? [];
+            $changedFieldDetails = submissionChangedFieldDetails(
+                $pdo,
+                (int) $row['employee_id'],
+                (int) $row['id'],
+                $changedFields,
+                $row['status'],
+                is_array($originalSnapshots) ? $originalSnapshots : [],
+                is_array($fieldDecisions) ? $fieldDecisions : []
+            );
+            if ($row['status'] === 'approved') {
+                $changedFieldDetails = array_values(array_filter(
+                    $changedFieldDetails,
+                    static function (array $detail): bool {
+                        if (empty($detail['original_available'])) {
+                            return true;
+                        }
+                        if (is_array($detail['original']) || is_array($detail['requested'])) {
+                            return json_encode($detail['original']) !== json_encode($detail['requested']);
+                        }
+                        return !submissionValuesEqual($detail['original'], $detail['requested']);
+                    }
+                ));
+                $changedFields = array_column($changedFieldDetails, 'field');
+            }
+            $contactEmail = trim((string) ($row['personal_email'] ?? ''));
+            $submittedEmail = $formData['personal_basic']['email'] ?? '';
+            if (is_array($submittedEmail)) {
+                $submittedEmail = $submittedEmail['value'] ??
+                    $submittedEmail['corrected_value'] ??
+                    $submittedEmail['original_value'] ??
+                    '';
+            }
+            $submittedEmail = is_scalar($submittedEmail) ? trim((string) $submittedEmail) : '';
             $submissions[] = [
                 'id' => (int) $row['id'],
                 'employee_id' => (int) $row['employee_id'],
@@ -138,27 +254,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'employee_number' => $row['mss_employee_id'] ?? '',
                 'unit' => $row['unit'] ?? '',
                 'mobile' => $row['mobile'],
+                'email' => $contactEmail !== '' ? $contactEmail : $submittedEmail,
+                'designation' => $row['designation'] ?? '',
                 'status' => $row['status'],
                 'reference_number' => $row['reference_number'],
                 'submitted_at' => $row['submitted_at'],
+                'declaration' => !empty($formData['submission']['declaration']),
                 'changed_fields' => $changedFields,
-                'field_decisions' => $fieldDecisions,
-                'changed_field_details' => submissionChangedFieldDetails(
-                    $pdo,
-                    (int) $row['employee_id'],
-                    (int) $row['id'],
-                    $changedFields,
-                    $row['status'],
-                    is_array($originalSnapshots) ? $originalSnapshots : [],
-                    $fieldDecisions
-                )
+                'changed_field_details' => $changedFieldDetails
             ];
         }
         echo json_encode([
             'success' => true,
             'submissions' => $submissions,
             'status_counts' => $statusCounts,
-            'units' => $units
+            'total_count' => array_sum($statusCounts),
+            'units' => $units,
+            'pagination' => [
+                'page' => $page,
+                'page_size' => $pageSize,
+                'total_results' => $totalResults,
+                'total_pages' => max(1, (int) ceil($totalResults / $pageSize))
+            ]
         ]);
     } catch (DomainException $e) {
         http_response_code(422);
@@ -190,39 +307,81 @@ $submissionId = filter_var($input['submission_id'] ?? null, FILTER_VALIDATE_INT,
 ]);
 $decision = $input['decision'] ?? '';
 $reviewNotes = trim((string) ($input['review_notes'] ?? ''));
-$rejectionReason = trim((string) ($input['rejection_reason'] ?? ''));
-$approvedFields = $input['approved_fields'] ?? [];
-$rejectedFields = $input['rejected_fields'] ?? [];
-$partialDecision = in_array($decision, ['approve_fields', 'reject_fields'], true);
 
-if ($submissionId === false || !in_array($decision, ['approve', 'reject', 'approve_fields', 'reject_fields'], true)) {
+if ($submissionId === false || !in_array($decision, ['approve', 'delete'], true)) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'A valid submission ID and decision are required']);
+    echo json_encode(['success' => false, 'message' => 'A valid submission ID and review action are required']);
     exit;
 }
-if (in_array($decision, ['reject', 'reject_fields'], true) && $rejectionReason === '') {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'A rejection reason is required']);
-    exit;
-}
-if (($decision === 'approve' || $decision === 'approve_fields') && (!is_array($approvedFields) || !$approvedFields)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Select at least one field or section to approve']);
-    exit;
-}
-if ($decision === 'reject_fields' && (!is_array($rejectedFields) || !$rejectedFields)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Select at least one field or section to reject']);
-    exit;
-}
-if (!ctype_digit((string) $reviewerId) || (int) $reviewerId < 1) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'The HR reviewer session has an invalid user ID']);
-    exit;
-}
-
 try {
     $pdo = getDatabaseConnection();
+    if ($decision === 'delete') {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare("
+            SELECT id, employee_id, COALESCE(reference_number, CONCAT('SUBMISSION-', id)) AS reference_number, status
+            FROM employee_form_submissions
+            WHERE id = ?
+            FOR UPDATE
+        ");
+        $stmt->execute([$submissionId]);
+        $submission = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$submission) {
+            throw new DomainException('Submission not found.');
+        }
+        if (!submissionIsInAdminScope($pdo, (int) $submissionId, $admin)) {
+            throw new DomainException('You are not authorized to delete this employee submission.');
+        }
+        if ($submission['status'] !== 'pending') {
+            throw new DomainException('Only pending submissions can be deleted.');
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO form_submission_logs
+                (submission_id, employee_id, reference_number, action, actor_type, actor_id, actor_name, ip_address, user_agent, created_at)
+            VALUES (?, ?, ?, 'delete', ?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([
+            $submissionId,
+            (int) $submission['employee_id'],
+            $submission['reference_number'],
+            $actorType,
+            (string) $reviewerId,
+            $reviewerName,
+            substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
+            substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 512)
+        ]);
+
+        $stmt = $pdo->prepare('UPDATE admin_employee_change_history SET submission_id = NULL WHERE submission_id = ?');
+        $stmt->execute([$submissionId]);
+
+        foreach ([
+            'temp_educational_qualifications',
+            'temp_employee_contact',
+            'temp_employee_employment',
+            'temp_employee_identification',
+            'temp_employee_previous_experience',
+            'temp_employee_referrals'
+        ] as $table) {
+            $stmt = $pdo->prepare("DELETE FROM {$table} WHERE employee_id = ? AND submission_id = ?");
+            $stmt->execute([(int) $submission['employee_id'], $submissionId]);
+        }
+        $stmt = $pdo->prepare('DELETE FROM temp_employees WHERE employee_id = ? AND submission_id = ?');
+        $stmt->execute([(int) $submission['employee_id'], $submissionId]);
+
+        $stmt = $pdo->prepare("DELETE FROM employee_form_submissions WHERE id = ? AND status = 'pending'");
+        $stmt->execute([$submissionId]);
+        if ($stmt->rowCount() !== 1) {
+            throw new DomainException('This submission is no longer pending and could not be deleted.');
+        }
+
+        $pdo->commit();
+        echo json_encode([
+            'success' => true,
+            'message' => 'Employee submission deleted successfully.'
+        ]);
+        exit;
+    }
+
     $promotedDocuments = [];
     $pdo->beginTransaction();
 
@@ -236,6 +395,9 @@ try {
     $submission = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$submission) {
         throw new DomainException('Submission not found.');
+    }
+    if (!submissionIsInAdminScope($pdo, (int) $submissionId, $admin)) {
+        throw new DomainException('You are not authorized to review this employee submission.');
     }
     if ($submission['status'] !== 'pending') {
         throw new DomainException('This submission is no longer pending HR review.');
@@ -260,141 +422,81 @@ try {
         $changedFields,
         array_intersect(array_keys($fieldDecisions), $allowedFields)
     )));
-    if ($decision === 'approve' && $fieldDecisions) {
-        throw new DomainException('This request already has field-by-field decisions. Continue reviewing only the remaining fields.');
-    }
-    $requestedFields = $decision === 'reject_fields' ? $rejectedFields : $approvedFields;
-    if ($decision === 'approve' || $partialDecision) {
-        foreach ($requestedFields as $field) {
-            if (!is_string($field) || !in_array($field, $changedFields, true)) {
-                throw new DomainException('Only changed fields in this submission can be reviewed.');
-            }
-            if ($partialDecision && isset($fieldDecisions[$field])) {
-                throw new DomainException('One or more selected fields have already been reviewed.');
-            }
-        }
-    }
-
     $employeeId = (int) $submission['employee_id'];
-    if ($partialDecision) {
-        if (!is_array($formData['submission']['original_values'] ?? null)) {
-            $formData['submission']['original_values'] = [];
-        }
-        $missingSnapshots = array_values(array_diff(
-            $changedFields,
-            array_keys($formData['submission']['original_values'])
-        ));
-        if ($missingSnapshots) {
-            $formData['submission']['original_values'] += submissionOriginalValueSnapshots(
-                $pdo,
-                $employeeId,
-                $missingSnapshots
-            );
-        }
-        $formData['submission']['changed_fields'] = $changedFields;
+    $approvedBefore = json_decode((string) ($submission['approved_fields'] ?? '[]'), true, 512, JSON_THROW_ON_ERROR);
+    $approvedBefore = is_array($approvedBefore)
+        ? array_values(array_intersect($approvedBefore, $allowedFields))
+        : [];
+    $changedFields = array_values(array_unique(array_merge(
+        $changedFields,
+        $approvedBefore
+    )));
+    if (!is_array($formData['submission']['original_values'] ?? null)) {
+        $formData['submission']['original_values'] = [];
     }
-    if ($decision === 'approve' || $decision === 'approve_fields') {
-        applyApprovedSubmissionFields(
+    $fieldsToApply = array_values(array_diff($changedFields, $approvedBefore));
+    $missingSnapshots = array_values(array_diff(
+        $fieldsToApply,
+        array_keys($formData['submission']['original_values'])
+    ));
+    if ($missingSnapshots) {
+        $formData['submission']['original_values'] += submissionOriginalValueSnapshots(
             $pdo,
             $employeeId,
-            (int) $submissionId,
-            $approvedFields,
-            (int) $reviewerId,
-            $promotedDocuments
+            $missingSnapshots
         );
     }
-
-    if ($partialDecision) {
-        foreach ($requestedFields as $field) {
-            $fieldDecisions[$field] = [
-                'decision' => $decision === 'approve_fields' ? 'approved' : 'rejected',
-                'reason' => $decision === 'reject_fields' ? $rejectionReason : null,
-                'reviewer_id' => (int) $reviewerId,
-                'reviewer_name' => $reviewerName,
-                'reviewed_at' => date(DATE_ATOM)
-            ];
-        }
-        $formData['submission']['field_decisions'] = $fieldDecisions;
-        $approvedBefore = json_decode((string) ($submission['approved_fields'] ?? '[]'), true, 512, JSON_THROW_ON_ERROR);
-        $approvedBefore = is_array($approvedBefore) ? $approvedBefore : [];
-        $allApprovedFields = $decision === 'approve_fields'
-            ? array_values(array_unique(array_merge($approvedBefore, $approvedFields)))
-            : array_values(array_unique($approvedBefore));
-        $resolvedCount = count(array_intersect($changedFields, array_keys($fieldDecisions)));
-        $allResolved = $resolvedCount === count($changedFields);
-        $status = !$allResolved
-            ? 'pending'
-            : ($allApprovedFields ? 'approved' : 'rejected');
-        $approvedJson = json_encode($allApprovedFields, JSON_THROW_ON_ERROR);
-        $formDataJson = json_encode($formData, JSON_THROW_ON_ERROR);
-    } else {
-        $approvedBefore = json_decode((string) ($submission['approved_fields'] ?? '[]'), true, 512, JSON_THROW_ON_ERROR);
-        if ($decision === 'reject' && is_array($approvedBefore) && $approvedBefore) {
-            throw new DomainException('Some fields have already been approved and applied. Reject the remaining fields individually.');
-        }
-        $status = $decision === 'approve' ? 'approved' : 'rejected';
-        $allApprovedFields = $decision === 'approve' ? array_values(array_unique($approvedFields)) : [];
-        $approvedJson = json_encode($allApprovedFields, JSON_THROW_ON_ERROR);
-        if ($decision === 'reject') {
-            foreach ($changedFields as $field) {
-                if (!isset($fieldDecisions[$field])) {
-                    $fieldDecisions[$field] = [
-                        'decision' => 'rejected',
-                        'reason' => $rejectionReason,
-                        'reviewer_id' => (int) $reviewerId,
-                        'reviewer_name' => $reviewerName,
-                        'reviewed_at' => date(DATE_ATOM)
-                    ];
-                }
-            }
-            $formData['submission']['field_decisions'] = $fieldDecisions;
-            $formDataJson = json_encode($formData, JSON_THROW_ON_ERROR);
-        } else {
-            $formDataJson = $submission['form_data'];
-        }
-    }
+    $formData['submission']['changed_fields'] = $changedFields;
+    $allApprovedFields = $changedFields;
+    $approvedJson = json_encode($allApprovedFields, JSON_THROW_ON_ERROR);
+    applyApprovedSubmissionFields(
+        $pdo,
+        $employeeId,
+        (int) $submissionId,
+        $fieldsToApply,
+        (int) $reviewerId,
+        $promotedDocuments
+    );
+    promoteSubmittedOtherDocuments(
+        $pdo,
+        $employeeId,
+        $formData,
+        $promotedDocuments
+    );
+    replacePromotedDocumentPaths($formData, $promotedDocuments);
+    $formDataJson = json_encode($formData, JSON_THROW_ON_ERROR);
     $stmt = $pdo->prepare("
         UPDATE employee_form_submissions
         SET status = ?, reviewed_by = ?, reviewer_name = ?, reviewed_at = NOW(),
-            approved_at = CASE WHEN ? = 'approved' THEN COALESCE(approved_at, NOW()) ELSE approved_at END,
+            approved_at = COALESCE(approved_at, NOW()),
             approved_fields = ?, form_data = ?, review_notes = ?,
-            rejection_reason = CASE WHEN ? = 'rejected' AND ? = 'reject' THEN ? ELSE rejection_reason END,
             updated_at = NOW()
         WHERE id = ? AND status = 'pending'
     ");
     $stmt->execute([
-        $status,
+        'approved',
         (string) $reviewerId,
         $reviewerName,
-        $status,
         $approvedJson,
         $formDataJson,
         $reviewNotes === '' ? null : $reviewNotes,
-        $status,
-        $decision,
-        $decision === 'reject' ? $rejectionReason : null,
         $submissionId
     ]);
 
     $stmt = $pdo->prepare("
         INSERT INTO form_submission_logs
             (submission_id, employee_id, reference_number, action, actor_type, actor_id, actor_name, notes, ip_address, user_agent, created_at)
-        VALUES (?, ?, ?, ?, 'hr', ?, ?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ");
     $stmt->execute([
         $submissionId,
         $employeeId,
         $submission['reference_number'],
         $decision,
+        $actorType,
         (string) $reviewerId,
         $reviewerName,
-        $partialDecision
-            ? 'Fields: ' . implode(', ', $requestedFields) . (
-                $decision === 'reject_fields'
-                    ? '. Reason: ' . $rejectionReason
-                    : ($reviewNotes === '' ? '' : '. ' . $reviewNotes)
-            )
-            : ($decision === 'reject' ? $rejectionReason : ($reviewNotes === '' ? null : $reviewNotes)),
+        $reviewNotes === '' ? null : $reviewNotes,
         substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
         substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 512)
     ]);
@@ -409,16 +511,9 @@ try {
     }
     echo json_encode([
         'success' => true,
-        'status' => $status,
-        'field_decisions' => $fieldDecisions,
+        'status' => 'approved',
         'approved_fields' => $allApprovedFields,
-        'message' => $partialDecision
-            ? ($decision === 'approve_fields'
-                ? 'Selected changes were approved.'
-                : 'Selected changes were rejected; original employee records were not changed.')
-            : ($decision === 'approve'
-                ? 'Approved fields were applied to the employee record.'
-                : 'Submission rejected. Original employee records were not changed.')
+        'message' => 'Employee submission approved and changes saved.'
     ]);
 } catch (DomainException $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
@@ -580,16 +675,27 @@ function submissionChangedFieldDetails(
     foreach ($changedFields as $field) {
         if (isset($fieldMap[$field])) {
             $mapping = $fieldMap[$field];
-            $staged = $pdo->prepare(sprintf(
-                'SELECT `%s` FROM `%s` WHERE employee_id = ? AND submission_id = ? ORDER BY `%s` DESC LIMIT 1',
-                $mapping['column'],
-                $mapping['staging_table'],
-                $mapping['staging_primary_key']
-            ));
-            $staged->execute([$employeeId, $submissionId]);
-            $requested = $staged->fetchColumn();
-            if ($requested === false) {
-                throw new RuntimeException("Staged value for {$field} was not found.");
+            if ($status === 'approved') {
+                $requestedStmt = $pdo->prepare(sprintf(
+                    'SELECT `%s` FROM `%s` WHERE employee_id = ? ORDER BY `%s` DESC LIMIT 1',
+                    $mapping['column'],
+                    $mapping['original_table'],
+                    $mapping['original_primary_key']
+                ));
+                $requestedStmt->execute([$employeeId]);
+                $requested = $requestedStmt->fetchColumn();
+            } else {
+                $staged = $pdo->prepare(sprintf(
+                    'SELECT `%s` FROM `%s` WHERE employee_id = ? AND submission_id = ? ORDER BY `%s` DESC LIMIT 1',
+                    $mapping['column'],
+                    $mapping['staging_table'],
+                    $mapping['staging_primary_key']
+                ));
+                $staged->execute([$employeeId, $submissionId]);
+                $requested = $staged->fetchColumn();
+                if ($requested === false) {
+                    throw new RuntimeException("Staged value for {$field} was not found.");
+                }
             }
 
             $originalValue = $originalSnapshots[$field] ?? null;
@@ -634,11 +740,11 @@ function submissionChangedFieldDetails(
                 ));
             $requested = submissionCollectionValues(
                 $pdo,
-                $mapping['staging_table'],
+                $status === 'approved' ? $mapping['original_table'] : $mapping['staging_table'],
                 $mapping['primary_key'],
                 $columns,
                 $employeeId,
-                $submissionId
+                $status === 'approved' ? null : $submissionId
             );
             $changes[] = [
                 'field' => $field,
@@ -703,7 +809,8 @@ function submissionApprovalFieldMap(): array
         ],
         'employee_identification' => [
             'aadhar_no', 'aadhar_copy', 'aadharlinked', 'pan_no', 'pan_copy',
-            'photo', 'resume', 'staff_sign', 'driving'
+            'photo', 'resume', 'staff_sign', 'driving', 'pg_degree_status',
+            'pg_degree_institution', 'pg_degree_doc'
         ],
         'employee_employment' => [
             'unit', 'branch', 'designation', 'employee_type', 'job_type', 'reporting_to',
@@ -735,7 +842,8 @@ function submissionApprovalCollectionMap(): array
             'original_table' => 'employee_referrals',
             'primary_key' => 'referral_id',
             'columns' => [
-                'employee_id', 'working_name', 'working_unit', 'working_designation', 'family_members_studying',
+                'employee_id', 'referred_by', 'family_members_working',
+                'working_name', 'working_unit', 'working_designation', 'family_members_studying',
                 'student_name', 'student_unit', 'student_class', 'mobile_no'
             ]
         ],
@@ -853,6 +961,7 @@ function promoteApprovedDocumentValue(
         'photo' => 'photo',
         'resume' => 'resume',
         'staff_sign' => 'signature',
+        'pg_degree_doc' => 'bed',
         'driving' => 'driving',
         'certificate_path' => 'education_certificate',
         'pay_slip' => 'experience_payslip',
@@ -893,6 +1002,74 @@ function promoteApprovedDocumentValue(
     }
 
     return $result['path'];
+}
+
+function promoteSubmittedOtherDocuments(
+    PDO $pdo,
+    int $employeeId,
+    array &$formData,
+    array &$promotedDocuments
+): void {
+    foreach ($formData['other_documents'] ?? [] as &$document) {
+        if (!is_array($document) || !is_string($document['file_path'] ?? null)) {
+            continue;
+        }
+        $temporaryPath = str_replace('\\', '/', $document['file_path']);
+        if (!str_starts_with($temporaryPath, 'employees_temp_documents/')) {
+            continue;
+        }
+        if (isset($promotedDocuments[$temporaryPath])) {
+            $document['file_path'] = $promotedDocuments[$temporaryPath]['path'];
+            continue;
+        }
+
+        $type = (string) ($document['type'] ?? 'other_document');
+        $type = [
+            'driving_license' => 'driving-license',
+            'police_verification' => 'police-verification'
+        ][$type] ?? $type;
+        if (!in_array($type, ['driving-license', 'police-verification', 'other_document', 'ccs'], true)) {
+            $type = 'other_document';
+        }
+        $result = submissionPromoteDocumentPath(
+            dirname(__DIR__, 2),
+            $employeeId,
+            $type,
+            $temporaryPath
+        );
+        if ($result['temporary_path'] !== null) {
+            $updateDocument = $pdo->prepare("
+                UPDATE employee_documents SET file_path = ?
+                WHERE employee_id = ? AND file_path = ?
+            ");
+            $updateDocument->execute([$result['path'], $employeeId, $temporaryPath]);
+            if ($updateDocument->rowCount() !== 1) {
+                throw new DomainException('The submitted document record could not be updated.');
+            }
+            $promotedDocuments[$temporaryPath] = $result;
+        }
+        $document['file_path'] = $result['path'];
+    }
+    unset($document);
+}
+
+function replacePromotedDocumentPaths(array &$value, array $promotedDocuments): void
+{
+    if (is_array($value)) {
+        foreach ($value as &$item) {
+            replacePromotedDocumentPaths($item, $promotedDocuments);
+        }
+        unset($item);
+        return;
+    }
+
+    if (!is_string($value)) {
+        return;
+    }
+    $normalizedPath = str_replace('\\', '/', $value);
+    if (isset($promotedDocuments[$normalizedPath])) {
+        $value = $promotedDocuments[$normalizedPath]['path'];
+    }
 }
 
 function removeUncommittedPromotedDocuments(array $promotedDocuments): void

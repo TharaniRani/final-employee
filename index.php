@@ -8,6 +8,12 @@ require_once __DIR__ . '/backend-integration/config/secure-session.php';
 startSecureSession();
 
 $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/');
+$pathInfo = rtrim((string) ($_SERVER['PATH_INFO'] ?? ''), '/');
+if ($pathInfo === '/admin') {
+    require __DIR__ . '/hr-review.php';
+    exit;
+}
+
 $csrfToken = bin2hex(random_bytes(32));
 $_SESSION['csrf_token'] = $csrfToken;
 
@@ -27,11 +33,19 @@ $steps = [
 ];
 
 $stepKeys = array_keys($steps);
-$wizardStepKeys = array_values(array_filter($stepKeys, static function ($key) {
-    return $key !== 'mobile-verification';
+// Set true to restore the retained Employment Details step.
+$showEmploymentDetailsStep = false;
+$wizardStepKeys = array_values(array_filter($stepKeys, static function ($key) use ($showEmploymentDetailsStep) {
+    return $key !== 'mobile-verification' &&
+        ($showEmploymentDetailsStep || $key !== 'employment-details');
 }));
 $currentStep = $_GET['step'] ?? 'mobile-verification';
 $isMobileVerification = $currentStep === 'mobile-verification';
+$hideEmploymentDetails = !$showEmploymentDetailsStep;
+$employmentDetailsWasHidden = $hideEmploymentDetails && $currentStep === 'employment-details';
+if ($employmentDetailsWasHidden) {
+    $currentStep = 'review';
+}
 $loginMobilePrefill = '';
 if ($isMobileVerification) {
     $loginMobilePrefill = (string) ($_SESSION['login_mobile_prefill'] ?? '');
@@ -219,6 +233,7 @@ $showStepper = !$isMobileVerification;
             currentStep: '<?php echo $currentStep; ?>',
             stepKeys: <?php echo json_encode($wizardStepKeys); ?>,
             steps: <?php echo json_encode(array_intersect_key($steps, array_flip($wizardStepKeys))); ?>,
+            hideEmploymentDetails: <?php echo $hideEmploymentDetails ? 'true' : 'false'; ?>,
             apiEndpoints: {
                 verifyMobile: '<?php echo $basePath; ?>/backend-integration/api/verify-mobile.php',
                 verifyOtp: '<?php echo $basePath; ?>/backend-integration/api/verify-otp.php',

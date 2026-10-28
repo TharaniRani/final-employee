@@ -355,7 +355,12 @@ window.HRMS_Wizard = (function() {
 
             const draft = JSON.parse(saved);
             const draftStepIndex = stepKeys.indexOf(draft.current_step);
-            if (!draft.form_data || draftStepIndex < 0) {
+            const restoredStepIndex = draftStepIndex >= 0
+                ? draftStepIndex
+                : config.hideEmploymentDetails && draft.current_step === 'employment-details'
+                    ? stepKeys.indexOf('review')
+                    : -1;
+            if (!draft.form_data || restoredStepIndex < 0) {
                 console.warn('Ignoring locally saved draft with invalid form data or step.');
                 return false;
             }
@@ -376,9 +381,10 @@ window.HRMS_Wizard = (function() {
                 savedExperience.not_applicable = false;
             }
 
-            currentStepIndex = draftStepIndex;
+            currentStepIndex = restoredStepIndex;
             currentStep = stepKeys[currentStepIndex];
             state.loadDraft(mergeDraftWithCurrent(draft.form_data, state.toJSON()));
+            clearHiddenEmploymentChanges();
             syncPermanentLocationFromCurrent();
             populateFormFromState();
             syncNextOfKinControls();
@@ -393,6 +399,16 @@ window.HRMS_Wizard = (function() {
             showToast('error', 'Draft Restore Failed', 'Saved progress could not be restored in this browser.');
             return false;
         }
+    }
+
+    function clearHiddenEmploymentChanges() {
+        if (!config.hideEmploymentDetails) return;
+
+        ['unit', 'campus', 'designation', 'employee_type', 'job_type', 'reporting_to', 'date_of_joining']
+            .forEach(field => {
+                state.set(`employment_details.${field}.change`, '');
+                state.set(`employment_details.${field}.updated_value`, '');
+            });
     }
 
     function clearUnapprovedDocumentReferences(value) {

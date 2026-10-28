@@ -21,6 +21,9 @@ window.HRMS_Referral = (function() {
     const fsTemplate = document.getElementById('family-studying-template');
 
     let initialized = false;
+    let studyingUnits = [];
+    let studyingUnitsLoaded = false;
+    let studyingUnitsLoadError = '';
 
     function init() {
         if (initialized) return;
@@ -62,6 +65,7 @@ window.HRMS_Referral = (function() {
         renderFamilyStudying();
         ensureInitialEntry('working');
         ensureInitialEntry('studying');
+        loadStudyingUnits();
     }
 
     function setupRadioListeners() {
@@ -416,10 +420,17 @@ window.HRMS_Referral = (function() {
                     const update = {};
                     update[path] = { original_value: value, verification: 'pending', corrected_value: null };
                     state.updateFamilyStudying(entry.id, update);
+                    if (input instanceof HTMLSelectElement) {
+                        validation.validateControl(input);
+                    }
                 });
 
                 input.addEventListener('blur', () => {
-                    validateField(input, `referral.family_studying_details[${index}].${path}`);
+                    const currentIndex = state.get('referral.family_studying_details')
+                        .findIndex((student) => student.id === entry.id);
+                    if (currentIndex >= 0) {
+                        validateField(input, `referral.family_studying_details[${currentIndex}].${path}`);
+                    }
                 });
             }
         });
@@ -437,20 +448,55 @@ window.HRMS_Referral = (function() {
 
     function populateSchoolDropdowns() {
         const selects = document.querySelectorAll('select[name="family_studying_school[]"]');
-        const schools = window.HRMS_CONFIG.schools || [];
+        // const schools = window.HRMS_CONFIG.schools || [];
 
         selects.forEach(select => {
             const currentValue = select.value;
-            const availableSchools = new Set(
-                Array.from(select.options, option => option.value)
-            );
-            schools.forEach(school => {
-                if (availableSchools.has(school)) return;
-                select.add(new Option(school, school));
-                availableSchools.add(school);
-            });
+            // const availableSchools = new Set(
+            //     Array.from(select.options, option => option.value)
+            // );
+            // schools.forEach(school => {
+            //     if (availableSchools.has(school)) return;
+            //     select.add(new Option(school, school));
+            //     availableSchools.add(school);
+            // });
+            const placeholder = studyingUnitsLoadError
+                ? 'Unable to load unit names'
+                : studyingUnitsLoaded
+                    ? 'Select unit'
+                    : 'Loading unit names...';
+            select.replaceChildren(new Option(placeholder, ''));
+            studyingUnits.forEach(unit => select.add(new Option(unit, unit)));
+            if (currentValue && !studyingUnits.includes(currentValue)) {
+                select.add(new Option(currentValue, currentValue));
+            }
             select.value = currentValue;
+        // });
+            select.disabled = !studyingUnitsLoaded;
+
+            const status = select.closest('.form-group')?.querySelector('.family-studying-school-status');
+            if (status) {
+                status.textContent = studyingUnitsLoadError;
+                status.hidden = !studyingUnitsLoadError;
+            }
         });
+    }
+
+    async function loadStudyingUnits() {
+        try {
+            const result = await api.getUnits();
+            if (!result?.success || !Array.isArray(result.units) || result.units.length === 0) {
+                throw new Error('Unit names were not returned by the server.');
+            }
+
+            studyingUnits = result.units;
+            studyingUnitsLoaded = true;
+            populateSchoolDropdowns();
+        } catch (error) {
+            studyingUnitsLoadError = 'Unable to load unit names. Refresh the page and try again.';
+            console.error('Unable to load referral school/unit options:', error);
+            populateSchoolDropdowns();
+        }
     }
 
     function syncFamilyStudyingFields(submissionData = null) {
