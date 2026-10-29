@@ -69,14 +69,14 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
             <div class="form-group">
                 <label class="form-label">Aadhaar Document Upload <span class="required-indicator" aria-hidden="true">*</span></label>
                 <div class="file-upload" id="aadhaar-upload">
-                    <input type="file" class="file-upload-input" id="aadhaar-file" name="aadhaar_file" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="aadhaar-upload-help">
+                    <input type="file" class="file-upload-input" id="aadhaar-file" name="aadhaar_file" accept="*/*" aria-describedby="aadhaar-upload-help">
                     <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload Aadhaar card">
                         <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <rect x="2" y="3" width="20" height="14" rx="2"></rect>
                             <path d="M8 21h8M12 17v4"></path>
                         </svg>
                         <p class="file-upload-text">Upload Aadhaar Card</p>
-                        <p class="file-upload-hint">PDF, JPG, PNG up to 5MB (scanned copy)</p>
+                        <p class="file-upload-hint">Any safe file type up to 5MB (scanned copy)</p>
                     </div>
                     <div class="file-upload-info" style="display: none;">
                         <div class="file-upload-name">
@@ -92,7 +92,7 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
                         </div>
                     </div>
                 </div>
-                <div class="form-help" id="aadhaar-upload-help">Upload scanned copy of your Aadhaar card (PDF, JPG, PNG - max 5MB)</div>
+                <div class="form-help" id="aadhaar-upload-help">Upload a scanned copy of your Aadhaar card (any safe file type, max 5MB)</div>
                 <div class="form-error" id="aadhaar-upload-error" role="alert"></div>
             </div>
 
@@ -122,14 +122,14 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
                 <div class="form-group">
                     <label class="form-label">PAN Document Upload <span class="required-indicator" aria-hidden="true">*</span></label>
                     <div class="file-upload" id="pan-upload">
-                        <input type="file" class="file-upload-input" id="pan-file" name="pan_file" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="pan-upload-help">
+                        <input type="file" class="file-upload-input" id="pan-file" name="pan_file" accept="*/*" aria-describedby="pan-upload-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload PAN card">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <rect x="2" y="3" width="20" height="14" rx="2"></rect>
                                 <path d="M8 21h8M12 17v4"></path>
                             </svg>
                             <p class="file-upload-text">Upload PAN Card</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB (scanned copy)</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB (scanned copy)</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -145,7 +145,7 @@ $stepIndex = $stepData['stepIndex'] ?? 2;
                             </div>
                         </div>
                     </div>
-                    <div class="form-help" id="pan-upload-help">Upload scanned copy of your PAN card (PDF, JPG, PNG - max 5MB)</div>
+                    <div class="form-help" id="pan-upload-help">Upload a scanned copy of your PAN card (any safe file type, max 5MB)</div>
                     <div class="form-error" id="pan-upload-error" role="alert"></div>
                 </div>
             </div>

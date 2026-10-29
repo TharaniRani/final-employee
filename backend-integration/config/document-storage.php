@@ -72,7 +72,184 @@ function submissionDocumentCategories(): array
     ]));
 }
 
+function submissionNormalizeUploadFilename(string $filename): string
+{
+    $filename = basename(str_replace('\\', '/', $filename));
+    $filename = preg_replace('/[\x00-\x1F\x7F<>:"|?*]/', '_', $filename);
+    if (!is_string($filename)) {
+        throw new DomainException('The uploaded filename is invalid.');
+    }
+
+    $filename = trim($filename, " .\t");
+    $extension = strtolower((string) pathinfo($filename, PATHINFO_EXTENSION));
+    $blockedExtensions = [
+        'ade', 'adp', 'apk', 'app', 'asp', 'aspx', 'asax', 'ascx', 'ashx', 'asmx',
+        'bat', 'bash', 'cmd', 'com', 'cgi', 'cshtml', 'dll', 'exe', 'fcgi', 'hta',
+        'htm', 'html', 'jar', 'js', 'jsp', 'jspx', 'mjs', 'msi', 'phtml', 'phar',
+        'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps', 'pl', 'ps1', 'py',
+        'rb', 'sh', 'shtm', 'shtml', 'stm', 'svg', 'vbe', 'vbs', 'vbhtml', 'war',
+        'wsf', 'wsh', 'xhtml', 'xsl', 'xslt'
+    ];
+
+    $deviceName = strtoupper(explode('.', $filename, 2)[0]);
+    if ($filename === '' || strlen($filename) > 180 || str_starts_with($filename, '.') ||
+        in_array($deviceName, ['CON', 'PRN', 'AUX', 'NUL'], true) ||
+        preg_match('/^(COM|LPT)[1-9]$/', $deviceName) ||
+        in_array($extension, $blockedExtensions, true)) {
+        throw new DomainException('Choose a filename that does not use a blocked executable or web-script extension.');
+    }
+
+    return $filename;
+}
+
 function submissionTemporaryDocumentRelativePath(
+    int $employeeId,
+    string $documentType,
+    string $storedName
+): string {
+    if ($employeeId < 1 || submissionNormalizeUploadFilename($storedName) !== $storedName) {
+        throw new DomainException('A stored document path is invalid. Please contact HR.');
+    }
+
+    return 'employees_temp_documents/' . submissionEmployeeDocumentFolder($documentType) . '/' . $storedName;
+}
+
+function submissionCreateUploadReference(int $employeeId, string $documentType, string $storedName): string
+{
+    if ($employeeId < 1 || session_status() !== PHP_SESSION_ACTIVE || session_id() === '') {
+        throw new RuntimeException('An authenticated upload session is required.');
+    }
+
+    $payload = json_encode([
+        'employee_id' => $employeeId,
+        'document_type' => strtolower(trim($documentType)),
+        'stored_name' => submissionNormalizeUploadFilename($storedName)
+    ], JSON_THROW_ON_ERROR);
+    $encodedPayload = rtrim(strtr(base64_encode($payload), '+/', '-_'), '=');
+
+    return 'upload:' . $encodedPayload . '.' . hash_hmac('sha256', $encodedPayload, session_id());
+}
+
+function submissionResolveUploadReference(
+    string $reference,
+    int $employeeId,
+    string $projectRoot
+): ?array {
+    if ($employeeId < 1 || session_status() !== PHP_SESSION_ACTIVE ||
+        !preg_match('/^upload:([A-Za-z0-9_-]+)\.([a-f0-9]{64})$/', $reference, $matches)) {
+        return null;
+    }
+
+    $expectedSignature = hash_hmac('sha256', $matches[1], session_id());
+    if (!hash_equals($expectedSignature, $matches[2])) {
+        return null;
+    }
+
+    $padding = (4 - strlen($matches[1]) % 4) % 4;
+    $decodedPayload = base64_decode(strtr($matches[1] . str_repeat('=', $padding), '-_', '+/'), true);
+    if ($decodedPayload === false) {
+        return null;
+    }
+    try {
+        $payload = json_decode($decodedPayload, true, 512, JSON_THROW_ON_ERROR);
+    } catch (JsonException $error) {
+        return null;
+    }
+    if (!is_array($payload) || (int) ($payload['employee_id'] ?? 0) !== $employeeId ||
+        !is_string($payload['document_type'] ?? null) || !is_string($payload['stored_name'] ?? null)) {
+        return null;
+    }
+
+    try {
+        $storedName = submissionNormalizeUploadFilename($payload['stored_name']);
+        if ($storedName !== $payload['stored_name']) {
+            return null;
+        }
+        $relativePath = submissionTemporaryDocumentRelativePath(
+            $employeeId,
+            $payload['document_type'],
+            $storedName
+        );
+    } catch (DomainException $error) {
+        return null;
+    }
+
+    $candidate = realpath($projectRoot . DIRECTORY_SEPARATOR .
+        str_replace('/', DIRECTORY_SEPARATOR, $relativePath));
+    $categoryRoot = realpath($projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' .
+        DIRECTORY_SEPARATOR . submissionEmployeeDocumentFolder($payload['document_type']));
+    if ($candidate === false || $categoryRoot === false ||
+        !str_starts_with(strtolower($candidate), strtolower($categoryRoot . DIRECTORY_SEPARATOR)) ||
+        !is_file($candidate)) {
+        return null;
+    }
+
+    return [
+        'document_type' => $payload['document_type'],
+        'stored_name' => $storedName,
+        'file_path' => $relativePath
+    ];
+}
+
+function submissionResolveStoredDocumentPath(
+    string $projectRoot,
+    int $employeeId,
+    string $documentType,
+    string $storedPath
+): ?string {
+    $storedPath = str_replace('\\', '/', trim($storedPath));
+    if ($employeeId < 1 || $storedPath === '' || str_contains($storedPath, "\0")) {
+        return null;
+    }
+
+    try {
+        if (basename($storedPath) === $storedPath) {
+            $storedPath = submissionTemporaryDocumentRelativePath(
+                $employeeId,
+                $documentType,
+                submissionNormalizeUploadFilename($storedPath)
+            );
+        }
+        $allowedPaths = [];
+        foreach ([
+            submissionTemporaryDocumentRelativePath($employeeId, $documentType, basename($storedPath)),
+            submissionLegacyTemporaryDocumentRelativePath($employeeId, $documentType, basename($storedPath)),
+            submissionPermanentDocumentRelativePath($employeeId, $documentType, basename($storedPath))
+        ] as $allowedPath) {
+            $allowedPaths[] = $allowedPath;
+        }
+    } catch (DomainException $error) {
+        return null;
+    }
+
+    if (!in_array($storedPath, $allowedPaths, true)) {
+        return null;
+    }
+    $candidate = realpath($projectRoot . DIRECTORY_SEPARATOR .
+        str_replace('/', DIRECTORY_SEPARATOR, $storedPath));
+    if ($candidate === false || !is_file($candidate)) {
+        return null;
+    }
+    foreach ([
+        $projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' . DIRECTORY_SEPARATOR .
+            submissionEmployeeDocumentFolder($documentType),
+        $projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' . DIRECTORY_SEPARATOR .
+            submissionEmployeeDocumentFolder($documentType) . DIRECTORY_SEPARATOR . $employeeId,
+        $projectRoot . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'requests' .
+            DIRECTORY_SEPARATOR . 'employees' . DIRECTORY_SEPARATOR .
+            submissionEmployeeDocumentFolder($documentType)
+    ] as $allowedRoot) {
+        $resolvedRoot = realpath($allowedRoot);
+        if ($resolvedRoot !== false &&
+            str_starts_with(strtolower($candidate), strtolower($resolvedRoot . DIRECTORY_SEPARATOR))) {
+            return $candidate;
+        }
+    }
+
+    return null;
+}
+
+function submissionLegacyTemporaryDocumentRelativePath(
     int $employeeId,
     string $documentType,
     string $storedName
@@ -111,18 +288,34 @@ function submissionPromoteDocumentPath(
     if (!str_starts_with($relativePath, 'employees_temp_documents/')) {
         return ['path' => $relativePath, 'temporary_path' => null, 'permanent_path' => null];
     }
-    $expectedPrefix = 'employees_temp_documents/' . $folder . '/' . $employeeId . '/';
+    $expectedPrefix = 'employees_temp_documents/' . $folder . '/';
     if (!str_starts_with($relativePath, $expectedPrefix)) {
         throw new DomainException('The staged document does not match its approved document field.');
     }
 
-    $storedName = substr($relativePath, strlen($expectedPrefix));
-    if ($storedName === '' || basename($storedName) !== $storedName ||
-        !preg_match('/^' . preg_quote((string) $employeeId, '/') . '_[a-z0-9-]+_[a-f0-9]{32}\.(pdf|jpg|png)$/', $storedName)) {
+    $pathTail = substr($relativePath, strlen($expectedPrefix));
+    $pathParts = explode('/', $pathTail);
+    if (count($pathParts) === 2 && $pathParts[0] === (string) $employeeId) {
+        $temporaryRelativePath = submissionLegacyTemporaryDocumentRelativePath(
+            $employeeId,
+            $documentType,
+            $pathParts[1]
+        );
+        $storedName = $pathParts[1];
+    } elseif (count($pathParts) === 1) {
+        $storedName = submissionNormalizeUploadFilename($pathParts[0]);
+        if ($storedName !== $pathParts[0]) {
+            throw new DomainException('The staged document name is invalid.');
+        }
+        $temporaryRelativePath = submissionTemporaryDocumentRelativePath(
+            $employeeId,
+            $documentType,
+            $storedName
+        );
+    } else {
         throw new DomainException('The staged document name is invalid.');
     }
 
-    $temporaryRelativePath = submissionTemporaryDocumentRelativePath($employeeId, $documentType, $storedName);
     $permanentRelativePath = submissionPermanentDocumentRelativePath($employeeId, $documentType, $storedName);
     $temporaryAbsolutePath = $projectRoot . DIRECTORY_SEPARATOR .
         str_replace('/', DIRECTORY_SEPARATOR, $temporaryRelativePath);
@@ -269,7 +462,11 @@ function resolveExistingEmployeeDocument(
     if ($candidate === false || !is_file($candidate)) {
         return null;
     }
-    $allowedRoots = array_filter([$legacyRoot, $uploadRoot]);
+    $allowedRoots = array_filter([
+        $legacyRoot,
+        $uploadRoot,
+        realpath($projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents')
+    ]);
     $isWithinAllowedRoot = false;
     foreach ($allowedRoots as $allowedRoot) {
         if (str_starts_with(strtolower($candidate), strtolower($allowedRoot . DIRECTORY_SEPARATOR))) {

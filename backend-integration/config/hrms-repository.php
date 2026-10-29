@@ -4,20 +4,15 @@
  */
 require_once __DIR__ . '/document-storage.php';
 
-function hrmsMobileSql(string $column): string
-{
-    return "RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE($column, ''), ' ', ''), '-', ''), '+', ''), '(', ''), ')', ''), '.', ''), 10)";
-}
-
 function findHrmsEmployeeIdByMobile(PDO $pdo, string $mobile): ?int
 {
-    $employeeMobile = hrmsMobileSql('e.mobile_no');
-
     $stmt = $pdo->prepare("
-        SELECT e.employee_id
-        FROM employees e
-        WHERE LOWER(TRIM(e.working_status)) IN ('working', 'active')
-          AND $employeeMobile = ?
+        SELECT DISTINCT e.employee_id
+        FROM employee_contact c
+        INNER JOIN employees e ON e.employee_id = c.employee_id
+        WHERE REPLACE(COALESCE(c.mobile_no, ''), ' ', '') = ?
+          AND TRIM(COALESCE(e.mss_employee_id, '')) <> ''
+          AND BINARY TRIM(e.working_status) = BINARY 'Working'
         ORDER BY e.employee_id
         LIMIT 2
     ");
@@ -77,38 +72,33 @@ function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
             e.mother_name,
             e.blood_group,
             e.working_status,
-            COALESCE(
-                NULLIF(TRIM((SELECT c.mobile_no FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1)), ''),
-                NULLIF(TRIM(e.mobile_no), ''),
-                NULLIF(TRIM((SELECT em.mobile_no FROM employee_employment em WHERE em.employee_id = e.employee_id ORDER BY em.employment_id DESC LIMIT 1)), '')
-            ) AS mobile,
             (SELECT c.personal_email FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS email,
             (SELECT c.local_address FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_address,
             (SELECT c.local_address1 FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_address_line2,
             (SELECT c.local_address2 FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_address_line3,
-            (SELECT c.pincode FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_pincode,
-            (SELECT c.city FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_city,
-            (SELECT c.state FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_state,
-            (SELECT c.country FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS current_country,
+            NULL AS current_pincode,
+            NULL AS current_city,
+            NULL AS current_state,
+            NULL AS current_country,
             (SELECT c.permanent_address FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_address,
             (SELECT c.permanent_address1 FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_address_line2,
             (SELECT c.permanent_address2 FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_address_line3,
-            (SELECT c.perm_pincode FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_pincode,
-            (SELECT c.perm_city FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_city,
-            (SELECT c.perm_state FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_state,
-            (SELECT c.perm_country FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS permanent_country,
-            (SELECT i.aadharlinked FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS aadhaar_pan_linked,
+            NULL AS permanent_pincode,
+            NULL AS permanent_city,
+            NULL AS permanent_state,
+            NULL AS permanent_country,
+            (SELECT c.aadharlinked FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS aadhaar_pan_linked,
             (SELECT c.nok_name FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS nok_name,
             (SELECT c.nok_contact_no FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS nok_contact,
             (SELECT c.nok_emergency_no FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS nok_emergency_contact,
             (SELECT c.nok_address FROM employee_contact c WHERE c.employee_id = e.employee_id ORDER BY c.contact_id DESC LIMIT 1) AS nok_address,
-            NULLIF(TRIM(e.alumni_detail), '') AS alumni_detail,
-            NULLIF(TRIM(e.alumni_unit), '') AS alumni_unit,
+            NULL AS alumni_detail,
+            NULL AS alumni_unit,
             (SELECT i.aadhar_no FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS aadhaar_number,
             (SELECT i.pan_no FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pan_number,
-            (SELECT i.pg_degree_status FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_status,
-            (SELECT i.pg_degree_institution FROM employee_identification i WHERE i.employee_id = e.employee_id ORDER BY i.id DESC LIMIT 1) AS pg_degree_institution,
-            (SELECT r.referral_source FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referral_source,
+            NULL AS pg_degree_status,
+            NULL AS pg_degree_institution,
+            (SELECT r.referred_by FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referral_source,
             (SELECT r.referred_by FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS referred_by,
             (SELECT r.family_members_working FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_working,
             (SELECT r.family_members_studying FROM employee_referrals r WHERE r.employee_id = e.employee_id ORDER BY r.referral_id DESC LIMIT 1) AS family_studying,
@@ -136,9 +126,6 @@ function getHrmsEmployeeById(PDO $pdo, int $employeeId): ?array
     if (!$employee) {
         return null;
     }
-
-    $digits = preg_replace('/\D+/', '', (string) ($employee['mobile'] ?? ''));
-    $employee['mobile'] = strlen($digits) > 10 ? substr($digits, -10) : $digits;
 
     $employee['same_as_permanent'] = hrmsAddressesMatch($employee);
     $employee['nok_name_source'] = empty($employee['nok_name'])
@@ -268,48 +255,6 @@ function getHrmsExistingIdentityDocuments(PDO $pdo, int $employeeId): array
         ];
     }
 
-    $documentTypes = [
-        'aadhaar' => ['aadhaar', 'aadhar'],
-        'pan' => ['pan'],
-        'photo' => ['photo'],
-        'resume' => ['resume'],
-        'signature' => ['signature', 'staff_sign']
-    ];
-    $placeholders = implode(', ', array_fill(0, count(array_unique(array_merge(...array_values($documentTypes)))), '?'));
-    $documentStmt = $pdo->prepare("
-        SELECT document_type, original_name, file_path
-        FROM employee_documents
-        WHERE employee_id = ? AND LOWER(REPLACE(document_type, '-', '_')) IN ($placeholders)
-        ORDER BY id DESC
-    ");
-    $documentStmt->execute([
-        $employeeId,
-        ...array_unique(array_merge(...array_values($documentTypes)))
-    ]);
-    foreach ($documentStmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
-        $type = strtolower(str_replace('-', '_', (string) ($document['document_type'] ?? '')));
-        foreach ($documentTypes as $identityType => $aliases) {
-            if ($documents[$identityType]['exists'] || !in_array($type, $aliases, true)) {
-                continue;
-            }
-
-            $filePath = resolveExistingEmployeeDocument(
-                dirname(__DIR__, 2),
-                $type,
-                (string) ($document['file_path'] ?? '')
-            );
-            if ($filePath === null) {
-                continue;
-            }
-
-            $documents[$identityType] = [
-                'filename' => trim((string) ($document['original_name'] ?? '')) ?: hrmsStoredFileName($filePath),
-                'exists' => true
-            ];
-            break;
-        }
-    }
-
     return $documents;
 }
 
@@ -327,8 +272,20 @@ function getHrmsExperienceRows(PDO $pdo, int $employeeId): array
     $stmt->execute([$employeeId]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$row) {
-        $row['pay_slip_name'] = hrmsStoredFileName($row['pay_slip'] ?? null);
-        $row['experience_letter_name'] = hrmsStoredFileName($row['experience_letter_path'] ?? null);
+        $paySlipPath = (string) ($row['pay_slip'] ?? '');
+        $experienceLetterPath = (string) ($row['experience_letter_path'] ?? '');
+        $paySlipFile = $paySlipPath === ''
+            ? null
+            : resolveExistingEmployeeDocument(dirname(__DIR__, 2), 'experience_payslip', $paySlipPath);
+        $experienceLetterFile = $experienceLetterPath === ''
+            ? null
+            : resolveExistingEmployeeDocument(dirname(__DIR__, 2), 'experience_letter', $experienceLetterPath);
+        $row['pay_slip_name'] = $paySlipFile === null ? '' : hrmsStoredFileName($paySlipPath);
+        $row['experience_letter_name'] = $experienceLetterFile === null
+            ? ''
+            : hrmsStoredFileName($experienceLetterPath);
+        $row['existing_pay_slip_available'] = $paySlipFile !== null;
+        $row['existing_experience_letter_available'] = $experienceLetterFile !== null;
     }
     unset($row);
     return $rows;
@@ -346,34 +303,6 @@ function getHrmsReferralRows(PDO $pdo, int $employeeId): array
     ");
     $stmt->execute([$employeeId]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-function getHrmsEmployeeDocuments(PDO $pdo, int $employeeId): array
-{
-    $stmt = $pdo->prepare("
-        SELECT id, document_type, original_name, stored_name, file_path
-        FROM employee_documents
-        WHERE employee_id = ?
-        ORDER BY id
-    ");
-    $stmt->execute([$employeeId]);
-    $documents = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
-        $storedPath = str_replace('\\', '/', trim((string) ($document['file_path'] ?? '')));
-        $normalizedPath = preg_replace('~^(?:\./|/)+~', '', $storedPath);
-        if ($normalizedPath === '') {
-            continue;
-        }
-
-        $document['is_temporary'] = preg_match(
-            '~(?:^|/)employees_temp_documents(?:/|$)~i',
-            $normalizedPath
-        ) === 1;
-        unset($document['file_path']);
-        $documents[] = $document;
-    }
-
-    return $documents;
 }
 
 function getHrmsLegacyDocumentNames(PDO $pdo, int $employeeId): array

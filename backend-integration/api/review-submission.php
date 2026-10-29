@@ -951,10 +951,6 @@ function promoteApprovedDocumentValue(
     string $value,
     array &$promotedDocuments
 ): string {
-    if (!str_starts_with(str_replace('\\', '/', $value), 'employees_temp_documents/')) {
-        return $value;
-    }
-
     $types = [
         'aadhar_copy' => 'aadhaar',
         'pan_copy' => 'pan',
@@ -967,11 +963,35 @@ function promoteApprovedDocumentValue(
         'pay_slip' => 'experience_payslip',
         'experience_letter_path' => 'experience_letter'
     ];
+    $normalizedPath = str_replace('\\', '/', $value);
     if (!isset($types[$column])) {
-        throw new DomainException('A staged document is assigned to an unsupported employee field.');
+        if (str_starts_with($normalizedPath, 'employees_temp_documents/')) {
+            throw new DomainException('A staged document is assigned to an unsupported employee field.');
+        }
+        return $value;
     }
 
-    $normalizedPath = str_replace('\\', '/', $value);
+    if (!str_starts_with($normalizedPath, 'employees_temp_documents/')) {
+        if (basename($normalizedPath) !== $normalizedPath) {
+            return $value;
+        }
+
+        $candidatePath = submissionTemporaryDocumentRelativePath(
+            $employeeId,
+            $types[$column],
+            $normalizedPath
+        );
+        if (submissionResolveStoredDocumentPath(
+            dirname(__DIR__, 2),
+            $employeeId,
+            $types[$column],
+            $candidatePath
+        ) === null) {
+            return $value;
+        }
+        $normalizedPath = $candidatePath;
+    }
+
     if (isset($promotedDocuments[$normalizedPath])) {
         return $promotedDocuments[$normalizedPath]['path'];
     }
@@ -984,21 +1004,6 @@ function promoteApprovedDocumentValue(
     );
     if ($result['temporary_path'] !== null) {
         $promotedDocuments[$normalizedPath] = $result;
-        $storedName = basename($result['temporary_path']);
-        $updateDocument = $pdo->prepare("
-            UPDATE employee_documents
-            SET file_path = ?
-            WHERE employee_id = ? AND stored_name = ? AND file_path = ?
-        ");
-        $updateDocument->execute([
-            $result['path'],
-            $employeeId,
-            $storedName,
-            $normalizedPath
-        ]);
-        if ($updateDocument->rowCount() !== 1) {
-            throw new DomainException('The staged document record could not be updated.');
-        }
     }
 
     return $result['path'];
@@ -1038,14 +1043,6 @@ function promoteSubmittedOtherDocuments(
             $temporaryPath
         );
         if ($result['temporary_path'] !== null) {
-            $updateDocument = $pdo->prepare("
-                UPDATE employee_documents SET file_path = ?
-                WHERE employee_id = ? AND file_path = ?
-            ");
-            $updateDocument->execute([$result['path'], $employeeId, $temporaryPath]);
-            if ($updateDocument->rowCount() !== 1) {
-                throw new DomainException('The submitted document record could not be updated.');
-            }
             $promotedDocuments[$temporaryPath] = $result;
         }
         $document['file_path'] = $result['path'];

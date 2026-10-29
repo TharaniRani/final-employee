@@ -254,7 +254,6 @@ $showStepper = !$isMobileVerification;
                 aadhaarPattern: '^\\d{12}$',
                 pincodePattern: '^\\d{6}$',
                 maxFileSize: 5242880,
-                allowedFileTypes: ['application/pdf', 'image/jpeg', 'image/png']
             },
             schools: [
                 'Lady Andal School - IB',

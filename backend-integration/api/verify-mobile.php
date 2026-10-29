@@ -1,7 +1,7 @@
 <?php
 /**
  * Verify Mobile Number Endpoint
- * Checks the registered mobile number and creates a local-only OTP
+ * Checks the registered mobile number and sends or creates its OTP
  */
 header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
@@ -9,6 +9,8 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/hrms-repository.php';
 require_once __DIR__ . '/../config/secure-session.php';
+require_once __DIR__ . '/../config/submission-access.php';
+require_once __DIR__ . '/../config/whatsapp-otp.php';
 
 startSecureSession();
 
@@ -24,19 +26,26 @@ if (!$csrfToken || $csrfToken !== ($_SESSION['csrf_token'] ?? '')) {
 $input = json_decode(file_get_contents('php://input'), true);
 $mobile = is_array($input) ? ($input['mobile'] ?? null) : null;
 
-// Validate mobile format (Indian mobile: 10 digits starting with 6-9)
-if (!is_string($mobile) || !preg_match('/^[6-9]\d{9}$/', $mobile)) {
+if (is_string($mobile)) {
+    $mobile = str_replace(' ', '', $mobile);
+}
+
+// Validate the normalized mobile number contains exactly 10 digits.
+if (!is_string($mobile) || !preg_match('/^\d{10}$/', $mobile)) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Invalid mobile number format']);
+    echo json_encode(['success' => false, 'message' => 'Enter a mobile number containing exactly 10 digits.']);
     exit;
 }
 
 try {
-    if (!isLocalOtpRequest()) {
+    unset($_SESSION['pending_mobile'], $_SESSION['pending_employee_id'], $_SESSION['pending_otp_delivery_mode']);
+
+    $deliveryMode = getOtpDeliveryMode();
+    if ($deliveryMode === 'disabled') {
         http_response_code(503);
         echo json_encode([
             'success' => false,
-            'message' => 'SMS delivery is not configured. Local OTP verification is available only from this machine.'
+            'message' => 'OTP delivery is not configured for this request.'
         ]);
         exit;
     }
@@ -53,17 +62,35 @@ try {
     $employeeId = findHrmsEmployeeIdByMobile($pdo, $mobile);
 
     if ($employeeId === null) {
-        echo json_encode(['success' => false, 'message' => 'This mobile number is not registered. Please contact HR.']);
+        echo json_encode([
+            'success' => false,
+            'message' => 'This mobile number is not linked to an eligible employee. Please contact HR.'
+        ]);
         exit;
     }
 
-    // Generate OTP (6 digits)
+    $existingSubmission = getEmployeeSubmissionLockout($pdo, $employeeId);
+    if ($existingSubmission !== null) {
+        http_response_code(409);
+        echo json_encode([
+            'success' => false,
+            'message' => employeeSubmissionLockoutMessage($existingSubmission)
+        ]);
+        exit;
+    }
+
+    // Generate OTP (6 digits) and store only its password hash.
     $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $otpHash = password_hash($otp, PASSWORD_DEFAULT);
+    if ($otpHash === false) {
+        throw new RuntimeException('Unable to secure the generated OTP');
+    }
+
     $pdo->beginTransaction();
     $stmt = $pdo->prepare("
         SELECT
-            TIMESTAMPDIFF(SECOND, last_requested_at, NOW()) AS seconds_since_request,
-            TIMESTAMPDIFF(SECOND, request_window_started_at, NOW()) AS seconds_in_window,
+            TIMESTAMPDIFF(SECOND, last_requested_at, UTC_TIMESTAMP()) AS seconds_since_request,
+            TIMESTAMPDIFF(SECOND, request_window_started_at, UTC_TIMESTAMP()) AS seconds_in_window,
             requests_in_window
         FROM otp_verifications
         WHERE mobile = ?
@@ -72,7 +99,10 @@ try {
     $stmt->execute([$mobile]);
     $requestState = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($requestState && $requestState['seconds_since_request'] !== null && (int) $requestState['seconds_since_request'] < 60) {
+    $secondsSinceRequest = $requestState['seconds_since_request'] ?? null;
+    if ($secondsSinceRequest !== null
+        && (int) $secondsSinceRequest >= 0
+        && (int) $secondsSinceRequest < 60) {
         $pdo->rollBack();
         http_response_code(429);
         echo json_encode(['success' => false, 'message' => 'Please wait before requesting another OTP.']);
@@ -81,6 +111,7 @@ try {
 
     $windowExpired = !$requestState
         || $requestState['seconds_in_window'] === null
+        || (int) $requestState['seconds_in_window'] < 0
         || (int) $requestState['seconds_in_window'] >= 900;
     if (!$windowExpired && (int) $requestState['requests_in_window'] >= 3) {
         $pdo->rollBack();
@@ -93,34 +124,61 @@ try {
         $requestCount = $windowExpired ? 1 : ((int) $requestState['requests_in_window'] + 1);
         $stmt = $pdo->prepare("
             UPDATE otp_verifications
-            SET otp = ?, otp_hash = NULL, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE),
+            SET otp = NULL, otp_hash = ?, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE),
                 employee_id = ?, attempts = 0, status = 'pending', used_at = NULL,
-                created_at = NOW(), last_requested_at = NOW(),
-                request_window_started_at = IF(?, NOW(), request_window_started_at),
+                created_at = NOW(), last_requested_at = UTC_TIMESTAMP(),
+                request_window_started_at = IF(?, UTC_TIMESTAMP(), request_window_started_at),
                 requests_in_window = ?
             WHERE mobile = ?
         ");
-        $stmt->execute([$otp, $otpExpiryMinutes, $employeeId, $windowExpired ? 1 : 0, $requestCount, $mobile]);
+        $stmt->execute([$otpHash, $otpExpiryMinutes, $employeeId, $windowExpired ? 1 : 0, $requestCount, $mobile]);
     } else {
         $stmt = $pdo->prepare("
             INSERT INTO otp_verifications
                 (mobile, otp, otp_hash, expires_at, employee_id, attempts, status, created_at,
                  last_requested_at, request_window_started_at, requests_in_window)
-            VALUES (?, ?, NULL, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?, 0, 'pending', NOW(), NOW(), NOW(), 1)
+            VALUES (?, NULL, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?, 0, 'pending', NOW(),
+                    UTC_TIMESTAMP(), UTC_TIMESTAMP(), 1)
         ");
-        $stmt->execute([$mobile, $otp, $otpExpiryMinutes, $employeeId]);
+        $stmt->execute([$mobile, $otpHash, $otpExpiryMinutes, $employeeId]);
     }
     $pdo->commit();
+
+    if ($deliveryMode === 'whatsapp') {
+        try {
+            sendWhatsappOtp($mobile, $otp);
+        } catch (RuntimeException $e) {
+            $stmt = $pdo->prepare("
+                UPDATE otp_verifications
+                SET otp = NULL, otp_hash = NULL, status = 'expired'
+                WHERE mobile = ? AND employee_id = ? AND status = 'pending'
+            ");
+            $stmt->execute([$mobile, $employeeId]);
+            error_log('[OTP] WhatsApp delivery failed: ' . $e->getMessage());
+            http_response_code(502);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Unable to send the WhatsApp verification code. Please try again later.'
+            ]);
+            exit;
+        }
+    }
 
     // Store employee ID in session for later verification
     $_SESSION['pending_mobile'] = $mobile;
     $_SESSION['pending_employee_id'] = $employeeId;
+    $_SESSION['pending_otp_delivery_mode'] = $deliveryMode;
 
-    echo json_encode([
+    $response = [
         'success' => true,
-        'message' => 'Local development OTP generated.',
-        'otp' => $otp
-    ]);
+        'message' => $deliveryMode === 'local'
+            ? 'Local development OTP generated.'
+            : 'Verification code sent via WhatsApp.'
+    ];
+    if ($deliveryMode === 'local') {
+        $response['otp'] = $otp;
+    }
+    echo json_encode($response);
 
 } catch (RuntimeException $e) {
     if (isset($pdo) && $pdo->inTransaction()) {

@@ -51,16 +51,6 @@ $file = $_FILES['file'];
 if ($file['size'] < 1 || $file['size'] > 5 * 1024 * 1024) {
     adminEmployeeDocumentRespond(422, ['success' => false, 'message' => 'Documents must be 5MB or smaller.']);
 }
-$mimeType = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
-$extensions = [
-    'application/pdf' => 'pdf',
-    'image/jpeg' => 'jpg',
-    'image/png' => 'png'
-];
-if (!isset($extensions[$mimeType])) {
-    adminEmployeeDocumentRespond(422, ['success' => false, 'message' => 'Upload a PDF, JPG, or PNG document.']);
-}
-
 $filePath = null;
 try {
     $pdo = getDatabaseConnection();
@@ -79,8 +69,7 @@ try {
         adminEmployeeDocumentRespond(404, ['success' => false, 'message' => 'Submission is no longer available.']);
     }
 
-    $storedName = $employeeId . '_' . str_replace('_', '-', $documentType) . '_' .
-        bin2hex(random_bytes(16)) . '.' . $extensions[$mimeType];
+    $storedName = submissionNormalizeUploadFilename((string) $file['name']);
     $relativePath = submissionTemporaryDocumentRelativePath(
         (int) $employeeId,
         $documentType,
@@ -89,36 +78,44 @@ try {
     $projectRoot = dirname(__DIR__, 2);
     $filePath = $projectRoot . DIRECTORY_SEPARATOR .
         str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+    $permanentPath = $projectRoot . DIRECTORY_SEPARATOR .
+        str_replace(
+            '/',
+            DIRECTORY_SEPARATOR,
+            submissionPermanentDocumentRelativePath((int) $employeeId, $documentType, $storedName)
+        );
+    if (is_file($permanentPath)) {
+        adminEmployeeDocumentRespond(409, [
+            'success' => false,
+            'message' => 'A file with this name already exists in this document category. Rename it before uploading.'
+        ]);
+    }
     $uploadDirectory = dirname($filePath);
     if (!is_dir($uploadDirectory) &&
         !mkdir($uploadDirectory, 0755, true) && !is_dir($uploadDirectory)) {
         throw new RuntimeException('Unable to create the temporary document folder.');
     }
+    $destination = @fopen($filePath, 'xb');
+    if ($destination === false) {
+        if (file_exists($filePath)) {
+            adminEmployeeDocumentRespond(409, [
+                'success' => false,
+                'message' => 'A file with this name already exists in this document category. Rename it before uploading.'
+            ]);
+        }
+        throw new RuntimeException('Unable to reserve a unique document filename.');
+    }
+    fclose($destination);
     if (!move_uploaded_file($file['tmp_name'], $filePath)) {
+        @unlink($filePath);
         throw new RuntimeException('Unable to store the uploaded document.');
     }
-
-    $insert = $pdo->prepare("
-        INSERT INTO employee_documents
-            (employee_id, document_type, original_name, stored_name, file_path, file_size, mime_type, metadata, uploaded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    ");
-    $insert->execute([
-        $employeeId,
-        $documentType,
-        basename((string) $file['name']),
-        $storedName,
-        $relativePath,
-        $file['size'],
-        $mimeType,
-        json_encode(['submission_id' => (int) $submissionId, 'uploaded_by' => (int) $admin['id']], JSON_THROW_ON_ERROR)
-    ]);
 
     adminEmployeeDocumentRespond(200, [
         'success' => true,
         'message' => 'Replacement document uploaded.',
         'file_path' => $relativePath,
-        'original_name' => basename((string) $file['name'])
+        'original_name' => $storedName
     ]);
 } catch (DomainException $error) {
     if ($filePath !== null && is_file($filePath)) {

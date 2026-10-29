@@ -163,7 +163,7 @@ window.HRMS_Education = (function() {
                 }
             });
             uploadZone.setUploaded(entry.certificate_file_id);
-            if (entry.legacy_certificate_name && entry.existing_row_id) {
+            if (entry.legacy_certificate_name && entry.existing_row_id && entry.existing_certificate_available) {
                 const url = `${window.HRMS_CONFIG.basePath}/backend-integration/api/view-existing-document.php?type=education_certificate&row_id=${encodeURIComponent(entry.existing_row_id)}`;
                 uploadZone.setExistingDocument(entry.legacy_certificate_name, url);
             }

@@ -36,7 +36,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                             aria-hidden="true">*</span></label>
                     <div class="file-upload" id="photo-upload">
                         <input type="file" class="file-upload-input" id="photo-file" name="photo_file"
-                            accept="image/jpeg,image/png" aria-describedby="photo-help">
+                            accept="*/*" aria-describedby="photo-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload photograph">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="1.5">
@@ -46,7 +46,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                                 </path>
                             </svg>
                             <p class="file-upload-text">Upload Photograph</p>
-                            <p class="file-upload-hint">JPG, PNG up to 5MB (2x2 inches, less than 6 months old)</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB (2x2 inches, less than 6 months old)</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -66,7 +66,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                         </div>
                     </div>
                     <div class="form-help" id="photo-help">Recent photograph (less than 6 months old), 2x2 inches,
-                        JPG/PNG max 5MB</div>
+                        Any safe file type, max 5MB</div>
                     <div class="form-error" id="photo-error" role="alert"></div>
                 </div>
 
@@ -75,7 +75,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                             aria-hidden="true">*</span></label>
                     <div class="file-upload" id="signature-upload">
                         <input type="file" class="file-upload-input" id="signature-file" name="signature_file"
-                            accept="image/jpeg,image/png" aria-describedby="signature-help">
+                            accept="*/*" aria-describedby="signature-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload signature">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="1.5">
@@ -83,7 +83,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                                 <path d="M12 3v18"></path>
                             </svg>
                             <p class="file-upload-text">Upload Signature</p>
-                            <p class="file-upload-hint">JPG, PNG up to 5MB (signed on white paper with blue pen)</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB (signed on white paper with blue pen)</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -101,7 +101,7 @@ $stepIndex = $stepData['stepIndex'] ?? 3;
                         </div>
                     </div>
                     <div class="form-help" id="signature-help">Sign on white paper with blue pen, scan and upload
-                        (JPG/PNG max 5MB)</div>
+                        (any safe file type, max 5MB)</div>
                     <div class="form-error" id="signature-error" role="alert"></div>
                 </div>
             </div>

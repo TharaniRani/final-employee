@@ -157,7 +157,7 @@ $stepIndex = $stepData['stepIndex'] ?? 0;
                             aria-hidden="true">*</span></label>
                     <div class="file-upload" id="resume-upload">
                         <input type="file" class="file-upload-input" id="resume-file" name="resume_file"
-                            accept=".pdf,.jpg,.jpeg,.png" aria-describedby="resume-help">
+                            accept="*/*" aria-describedby="resume-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload resume">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none"
                                 stroke="currentColor" stroke-width="1.5">
@@ -166,7 +166,7 @@ $stepIndex = $stepData['stepIndex'] ?? 0;
                                 <line x1="12" y1="3" x2="12" y2="15"></line>
                             </svg>
                             <p class="file-upload-text">Upload Resume</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -183,7 +183,7 @@ $stepIndex = $stepData['stepIndex'] ?? 0;
                             </div>
                         </div>
                     </div>
-                    <div class="form-help" id="resume-help">Upload your current resume (PDF, JPG, PNG - max 5MB)</div>
+                    <div class="form-help" id="resume-help">Upload your current resume (any safe file type, max 5MB)</div>
                     <div class="form-error" id="resume-error" role="alert"></div>
                 </div>
             </div>

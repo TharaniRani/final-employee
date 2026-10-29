@@ -109,14 +109,14 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                     <div class="form-group">
                         <label class="form-label">B.Ed Document Upload <span class="required-indicator" aria-hidden="true">*</span></label>
                         <div class="file-upload" id="bed-upload">
-                            <input type="file" class="file-upload-input" id="bed-file" name="bed_file" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="bed-upload-help">
+                            <input type="file" class="file-upload-input" id="bed-file" name="bed_file" accept="*/*" aria-describedby="bed-upload-help">
                             <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload B.Ed document">
                                 <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                     <polyline points="14 2 14 8 20 8"></polyline>
                                 </svg>
                                 <p class="file-upload-text">Upload B.Ed Document</p>
-                                <p class="file-upload-hint">PDF, JPG, PNG up to 5MB</p>
+                                <p class="file-upload-hint">Any safe file type up to 5MB</p>
                             </div>
                             <div class="file-upload-info" style="display: none;">
                                 <div class="file-upload-name">
@@ -147,14 +147,14 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                 <div class="form-group">
                     <label class="form-label">Driving License Upload</label>
                     <div class="file-upload" id="driving-license-upload">
-                        <input type="file" class="file-upload-input" id="driving-license-file" name="driving_license_file" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="dl-upload-help">
+                        <input type="file" class="file-upload-input" id="driving-license-file" name="driving_license_file" accept="*/*" aria-describedby="dl-upload-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload driving license">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <rect x="2" y="3" width="20" height="14" rx="2"></rect>
                                 <path d="M8 21h8M12 17v4"></path>
                             </svg>
                             <p class="file-upload-text">Upload Driving License</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -177,14 +177,14 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                 <div class="form-group">
                     <label class="form-label">Police Verification Upload</label>
                     <div class="file-upload" id="police-verification-upload">
-                        <input type="file" class="file-upload-input" id="police-verification-file" name="police_verification_file" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="police-verification-upload-help">
+                        <input type="file" class="file-upload-input" id="police-verification-file" name="police_verification_file" accept="*/*" aria-describedby="police-verification-upload-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload Police Verification">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                             </svg>
                             <p class="file-upload-text">Upload Police Verification</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -264,14 +264,14 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
             <div class="form-group">
                 <label class="form-label">Document Upload <span class="required-indicator" aria-hidden="true">*</span></label>
                 <div class="file-upload other-doc-upload">
-                    <input type="file" class="file-upload-input" name="other_doc_file[]" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="other-doc-help">
+                    <input type="file" class="file-upload-input" name="other_doc_file[]" accept="*/*" aria-describedby="other-doc-help">
                     <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload document">
                         <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
                         </svg>
                         <p class="file-upload-text">Upload Document</p>
-                        <p class="file-upload-hint">PDF, JPG, PNG up to 5MB</p>
+                        <p class="file-upload-hint">Any safe file type up to 5MB</p>
                     </div>
                     <div class="file-upload-info" style="display: none;">
                         <div class="file-upload-name">
@@ -287,7 +287,7 @@ $stepIndex = $stepData['stepIndex'] ?? 7;
                         </div>
                     </div>
                 </div>
-                <div class="form-help" id="other-doc-help">Upload the document (PDF, JPG, PNG - max 5MB)</div>
+                <div class="form-help" id="other-doc-help">Upload the document (any safe file type, max 5MB)</div>
                 <div class="form-error" role="alert"></div>
             </div>
         </div>

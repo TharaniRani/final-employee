@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/submission-access.php';
 
 session_start();
 
@@ -37,6 +38,16 @@ if (empty($formData)) {
 
 try {
     $pdo = getDatabaseConnection();
+    $existingSubmission = getEmployeeSubmissionLockout($pdo, (int) $employeeId);
+    if ($existingSubmission !== null) {
+        http_response_code(409);
+        echo json_encode([
+            'success' => false,
+            'message' => employeeSubmissionLockoutMessage($existingSubmission)
+        ]);
+        exit;
+    }
+
     $mobile = $formData['personal_basic']['mobile_number']['original_value'] ?? $_SESSION['verified_mobile'] ?? '';
     $encodedFormData = json_encode($formData, JSON_THROW_ON_ERROR);
 

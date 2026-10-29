@@ -242,11 +242,9 @@ window.HRMS_WorkExperience = (function() {
                 }
             });
             uploadZone.setUploaded(entry.experience_letter_file_id);
-            if (entry.legacy_experience_letter_name) {
-                const note = document.createElement('p');
-                note.className = 'existing-document-note';
-                note.textContent = `Previously recorded: ${entry.legacy_experience_letter_name}`;
-                letterUpload.appendChild(note);
+            if (entry.legacy_experience_letter_name && entry.existing_experience_letter_available) {
+                const url = `${window.HRMS_CONFIG.basePath}/backend-integration/api/view-existing-document.php?type=experience_letter&row_id=${encodeURIComponent(entry.existing_row_id)}`;
+                uploadZone.setExistingDocument(entry.legacy_experience_letter_name, url);
             }
         }
 
@@ -267,11 +265,9 @@ window.HRMS_WorkExperience = (function() {
                 }
             });
             uploadZone.setUploaded(entry.pay_slip_file_id);
-            if (entry.legacy_pay_slip_name) {
-                const note = document.createElement('p');
-                note.className = 'existing-document-note';
-                note.textContent = `Previously recorded: ${entry.legacy_pay_slip_name}`;
-                payslipUpload.appendChild(note);
+            if (entry.legacy_pay_slip_name && entry.existing_pay_slip_available) {
+                const url = `${window.HRMS_CONFIG.basePath}/backend-integration/api/view-existing-document.php?type=experience_payslip&row_id=${encodeURIComponent(entry.existing_row_id)}`;
+                uploadZone.setExistingDocument(entry.legacy_pay_slip_name, url);
             }
         }
 

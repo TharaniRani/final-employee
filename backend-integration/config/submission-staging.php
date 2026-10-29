@@ -29,6 +29,20 @@ function insertStagingRow(PDO $pdo, string $table, array $row, array $excludedCo
     $stmt->execute(array_values($row));
 }
 
+function submissionStagedDocumentValue($value)
+{
+    if (!is_string($value)) {
+        return $value;
+    }
+
+    $normalized = str_replace('\\', '/', $value);
+    if (!str_starts_with($normalized, 'employees_temp_documents/')) {
+        return $value;
+    }
+
+    return basename($normalized);
+}
+
 function getStagingTableDefinitions(PDO $pdo, string $table): array
 {
     $stmt = $pdo->prepare("
@@ -224,6 +238,7 @@ function submissionOriginalValueSnapshots(PDO $pdo, int $employeeId, array $chan
         ]
     ];
     $snapshots = [];
+    $tableDefinitions = [];
 
     foreach ($changedFields as $field) {
         if (!is_string($field)) {
@@ -245,6 +260,13 @@ function submissionOriginalValueSnapshots(PDO $pdo, int $employeeId, array $chan
         if (str_contains($field, '.')) {
             [$table, $column] = explode('.', $field, 2);
             if (!isset($scalarTables[$table]) || !in_array($column, $scalarTables[$table][1], true)) {
+                continue;
+            }
+            if (!isset($tableDefinitions[$table])) {
+                $tableDefinitions[$table] = getStagingTableDefinitions($pdo, $table);
+            }
+            if (!isset($tableDefinitions[$table][$column])) {
+                $snapshots[$field] = null;
                 continue;
             }
             [$primaryKey] = $scalarTables[$table];
@@ -304,11 +326,7 @@ function getBaselineStagingRow(PDO $pdo, string $table, string $primaryKey, int 
     );
     $stmt->execute([$employeeId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$row) {
-        throw new RuntimeException("No baseline staging row was found in {$table}");
-    }
-
-    return $row;
+    return $row ?: ['employee_id' => $employeeId];
 }
 
 function submissionDatabaseDate($value, bool $required = false): ?string
@@ -371,6 +389,9 @@ function stageSubmissionRepeaterRow(
     array $overrides
 ): void {
     $row = getBaselineStagingRow($pdo, $stagingTable, $primaryKey, $employeeId);
+    foreach ($overrides as $column => $value) {
+        $overrides[$column] = submissionStagedDocumentValue($value);
+    }
     $row = array_replace($row, $overrides, [
         'employee_id' => $employeeId,
         'submission_id' => $submissionId
@@ -435,6 +456,9 @@ function stageSparseSubmissionRow(
     array $changes,
     array $metadata = []
 ): void {
+    foreach ($changes as $column => $value) {
+        $changes[$column] = submissionStagedDocumentValue($value);
+    }
     $row = array_replace($changes, $metadata, [
         'employee_id' => $employeeId,
         'submission_id' => $submissionId

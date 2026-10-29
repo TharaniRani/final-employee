@@ -74,11 +74,11 @@ function collectSubmissionFileIds($value, array &$ids, string $key = ''): void
         return;
     }
 
-    if (!is_scalar($value) || !ctype_digit((string) $value) || (int) $value < 1) {
+    if (!is_string($value) || !str_starts_with($value, 'upload:')) {
         throw new DomainException('A document reference is invalid. Please upload the document again.');
     }
 
-    $ids[(string) (int) $value] = (int) $value;
+    $ids[$value] = $value;
 }
 
 function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): array
@@ -89,54 +89,14 @@ function loadSubmissionFilePaths(PDO $pdo, int $employeeId, array $formData): ar
         return [];
     }
 
-    $placeholders = implode(',', array_fill(0, count($ids), '?'));
-    $stmt = $pdo->prepare("
-        SELECT id, document_type, stored_name, file_path
-        FROM employee_documents
-        WHERE employee_id = ? AND id IN ($placeholders)
-    ");
-    $stmt->execute(array_merge([$employeeId], array_values($ids)));
-
     $paths = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
-        $relativePath = submissionDocumentRelativePath(
-            $employeeId,
-            (string) $document['document_type'],
-            (string) $document['stored_name']
-        );
-        $recordedPath = str_replace('\\', '/', (string) ($document['file_path'] ?? ''));
-        if (str_starts_with($recordedPath, 'employees_temp_documents/')) {
-            $expectedTempPath = submissionTemporaryDocumentRelativePath(
-                $employeeId,
-                (string) $document['document_type'],
-                (string) $document['stored_name']
-            );
-            if ($recordedPath !== $expectedTempPath) {
-                throw new DomainException('A staged document path is invalid. Please upload it again.');
-            }
-            $temporaryAbsolutePath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR .
-                str_replace('/', DIRECTORY_SEPARATOR, $expectedTempPath);
-            if (!is_file($temporaryAbsolutePath)) {
-                throw new DomainException('A staged document is unavailable. Please upload it again.');
-            }
-            $paths[(string) $document['id']] = $expectedTempPath;
-            continue;
+    $projectRoot = dirname(__DIR__, 2);
+    foreach ($ids as $reference) {
+        $document = submissionResolveUploadReference($reference, $employeeId, $projectRoot);
+        if ($document === null) {
+            throw new DomainException('A document is missing or does not belong to this employee. Please upload it again.');
         }
-        $legacyPath = submissionLegacyDocumentRelativePath($employeeId, (string) $document['stored_name']);
-        $projectRoot = dirname(__DIR__, 2);
-        if (!is_file(submissionDocumentAbsolutePath(
-            $projectRoot,
-            $employeeId,
-            (string) $document['document_type'],
-            (string) $document['stored_name']
-        )) && is_file($projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $legacyPath))) {
-            $relativePath = $legacyPath;
-        }
-        $paths[(string) $document['id']] = $relativePath;
-    }
-
-    if (count($paths) !== count($ids)) {
-        throw new DomainException('A document is missing or does not belong to this employee. Please upload it again.');
+        $paths[$reference] = $document['file_path'];
     }
 
     return $paths;
@@ -148,7 +108,7 @@ function submissionFilePath(array $paths, $fileId): ?string
         return null;
     }
 
-    return $paths[(string) (int) $fileId] ?? null;
+    return is_string($fileId) ? ($paths[$fileId] ?? null) : null;
 }
 
 function buildSubmissionJson(PDO $pdo, int $employeeId, array $data, string $mobile, string $referenceNumber, string $submittedAt): array

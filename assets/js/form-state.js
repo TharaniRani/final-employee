@@ -840,7 +840,10 @@ window.HRMS_FormState = (function() {
                 experience_letter_file_id: experienceLetters[index] || null,
                 pay_slip_file_id: experiencePayslips[index] || null,
                 legacy_experience_letter_name: row.experience_letter_name || '',
-                legacy_pay_slip_name: row.pay_slip_name || ''
+                legacy_pay_slip_name: row.pay_slip_name || '',
+                existing_row_id: Number(row.id),
+                existing_experience_letter_available: !!row.existing_experience_letter_available,
+                existing_pay_slip_available: !!row.existing_pay_slip_available
             })));
             const referralRows = employeeData.referrals || [];
             const workingRows = referralRows.filter(row => String(row.working_name || '').trim() !== '');

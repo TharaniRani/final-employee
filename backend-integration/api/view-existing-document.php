@@ -50,16 +50,16 @@ if (!is_string($documentType)) {
     exit('Invalid document type.');
 }
 $identityColumns = [
-    'aadhaar' => ['aadhar_copy', 'aadhaar', ['aadhaar', 'aadhar']],
-    'pan' => ['pan_copy', 'pan', ['pan']],
-    'photo' => ['photo', 'photo', ['photo']],
-    'resume' => ['resume', 'resume', ['resume']],
-    'signature' => ['staff_sign', 'signature', ['signature', 'staff_sign']],
-    'bed' => ['pg_degree_doc', 'bed', ['bed']],
-    'driving' => ['driving', 'driving', ['driving', 'driving_license']],
-    'police_verification' => ['others', 'police-verification', ['police_verification']],
-    'other_document' => ['others', 'other_document', ['other_document', 'others']],
-    'ccs' => ['ccs', 'ccs', ['ccs']]
+    'aadhaar' => ['aadhar_copy', 'aadhaar'],
+    'pan' => ['pan_copy', 'pan'],
+    'photo' => ['photo', 'photo'],
+    'resume' => ['resume', 'resume'],
+    'signature' => ['staff_sign', 'signature'],
+    'bed' => ['pg_degree_doc', 'bed'],
+    'driving' => ['driving', 'driving'],
+    'police_verification' => ['others', 'police-verification'],
+    'other_document' => ['others', 'other_document'],
+    'ccs' => ['ccs', 'ccs']
 ];
 
 try {
@@ -117,54 +117,22 @@ try {
     $filePath = trim($storedPath) === ''
         ? null
         : resolveExistingEmployeeDocument(dirname(__DIR__, 2), $folderType, $storedPath);
-    if ($filePath === null && isset($identityColumns[$documentType])) {
-        $aliases = $identityColumns[$documentType][2];
-        $placeholders = implode(', ', array_fill(0, count($aliases), '?'));
-        $documentStmt = $pdo->prepare("
-            SELECT document_type, file_path
-            FROM employee_documents
-            WHERE employee_id = ? AND LOWER(REPLACE(document_type, '-', '_')) IN ($placeholders)
-            ORDER BY id DESC
-        ");
-        $documentStmt->execute([$employeeId, ...$aliases]);
-        foreach ($documentStmt->fetchAll(PDO::FETCH_ASSOC) as $document) {
-            $documentTypeAlias = strtolower(str_replace('-', '_', (string) $document['document_type']));
-            $storageType = [
-                'aadhar' => 'aadhaar',
-                'staff_sign' => 'signature',
-                'driving_license' => 'driving',
-                'police_verification' => 'police-verification',
-                'others' => 'other_document'
-            ][$documentTypeAlias] ?? $documentTypeAlias;
-            $filePath = resolveExistingEmployeeDocument(
-                dirname(__DIR__, 2),
-                $storageType,
-                (string) ($document['file_path'] ?? '')
-            );
-            if ($filePath !== null) {
-                break;
-            }
-        }
-    }
     if ($filePath === null) {
         http_response_code(404);
         exit('The existing document is unavailable.');
     }
 
-    $mimeType = (new finfo(FILEINFO_MIME_TYPE))->file($filePath);
-    $allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-    if (!in_array($mimeType, $allowedMimeTypes, true)) {
-        http_response_code(415);
-        exit('This document type cannot be previewed.');
-    }
-
+    $detectedMimeType = (new finfo(FILEINFO_MIME_TYPE))->file($filePath);
+    $inlineTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    $isPreviewable = in_array($detectedMimeType, $inlineTypes, true);
+    $mimeType = $isPreviewable ? $detectedMimeType : 'application/octet-stream';
     header('Content-Type: ' . $mimeType);
     header('Content-Length: ' . (string) filesize($filePath));
-    header('Content-Disposition: inline; filename="employee-document.' . [
-        'application/pdf' => 'pdf',
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png'
-    ][$mimeType] . '"');
+    $downloadName = basename(str_replace('\\', '/', $storedPath));
+    header(
+        'Content-Disposition: ' . ($isPreviewable ? 'inline' : 'attachment') .
+        '; filename="document"; filename*=UTF-8\'\'' . rawurlencode($downloadName)
+    );
     readfile($filePath);
 } catch (Throwable $e) {
     error_log('Existing employee document preview failed: ' . $e->getMessage());

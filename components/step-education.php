@@ -147,7 +147,7 @@ $stepIndex = $stepData['stepIndex'] ?? 6;
             <div class="form-group">
                 <label class="form-label">Provisional/Completion Certificate <span class="required-indicator" aria-hidden="true">*</span></label>
                 <div class="file-upload education-certificate-upload">
-                    <input type="file" class="file-upload-input" name="education_certificate[]" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="cert-help">
+                    <input type="file" class="file-upload-input" name="education_certificate[]" accept="*/*" aria-describedby="cert-help">
                     <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload certificate">
                         <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -157,7 +157,7 @@ $stepIndex = $stepData['stepIndex'] ?? 6;
                             <polyline points="10 9 9 9 8 9"></polyline>
                         </svg>
                         <p class="file-upload-text">Upload Certificate</p>
-                        <p class="file-upload-hint">PDF, JPG, PNG up to 5MB (provisional or completion certificate only)</p>
+                        <p class="file-upload-hint">Any safe file type up to 5MB (certificate only)</p>
                     </div>
                     <div class="file-upload-info" style="display: none;">
                         <div class="file-upload-name">
@@ -173,7 +173,7 @@ $stepIndex = $stepData['stepIndex'] ?? 6;
                         </div>
                     </div>
                 </div>
-                <div class="form-help" id="cert-help">Upload provisional or completion certificate only (PDF, JPG, PNG - max 5MB)</div>
+                <div class="form-help" id="cert-help">Upload a provisional or completion certificate (any safe file type, max 5MB)</div>
                 <div class="form-error" role="alert"></div>
             </div>
         </div>

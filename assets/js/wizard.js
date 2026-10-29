@@ -31,6 +31,7 @@ window.HRMS_Wizard = (function() {
     let localDraftSaveFailed = false;
     let employeeEducationRows = [];
     let approvedEmployeeDocumentIds = new Set();
+    let validationAttemptedStep = null;
 
     function init() {
         if (isInitialized || !wizard) return;
@@ -219,11 +220,11 @@ window.HRMS_Wizard = (function() {
 
     function displayExistingIdentityDocuments(existingDocuments) {
         ['aadhaar', 'pan', 'photo', 'resume', 'signature'].forEach(type => {
-            const document = existingDocuments?.[type];
-            if (!document?.exists || !document.filename) return;
-            const url = `${config.basePath}/backend-integration/api/view-existing-document.php?type=${encodeURIComponent(type)}`;
+            const existingDocument = existingDocuments?.[type];
             const fieldId = type === 'resume' ? 'resume-upload' : `${type}-upload`;
-            window.HRMS_FileUpload.setExistingDocument(fieldId, document.filename, url);
+            if (!existingDocument?.exists || !existingDocument.filename) return;
+            const url = `${config.basePath}/backend-integration/api/view-existing-document.php?type=${encodeURIComponent(type)}`;
+            window.HRMS_FileUpload.setExistingDocument(fieldId, existingDocument.filename, url);
         });
     }
 
@@ -331,8 +332,8 @@ window.HRMS_Wizard = (function() {
                 const targetStep = item.dataset.step;
                 const targetIndex = stepKeys.indexOf(targetStep);
 
-                // Only allow navigation to completed steps or current step
-                if (targetIndex <= currentStepIndex || isStepCompleted(targetStep)) {
+                // Forward navigation must use Continue so the current step is validated.
+                if (targetIndex <= currentStepIndex) {
                     goToStep(targetIndex);
                 }
             });
@@ -451,7 +452,7 @@ window.HRMS_Wizard = (function() {
                 ...entry,
                 existing_row_id: Number(existing.id),
                 existing_certificate_available: !!existing.has_certificate,
-                legacy_certificate_name: existing.has_certificate ? existing.certificate_name || '' : ''
+                legacy_certificate_name: existing.certificate_name || ''
             };
         });
 
@@ -605,6 +606,7 @@ window.HRMS_Wizard = (function() {
         // Update current step tracking
         currentStepIndex = index;
         currentStep = stepKeys[index];
+        validationAttemptedStep = null;
 
         // Evaluate conditional fields for this step
         conditionalFields.evaluateForStep(currentStep, state.getState());
@@ -665,13 +667,13 @@ window.HRMS_Wizard = (function() {
     function validateCurrentStep() {
         const currentStepElement = document.getElementById(`step-${currentStep}`);
         validation.clearAllErrors(currentStepElement);
+        validationAttemptedStep = currentStep;
 
         // Validate current step
         const errors = validation.validateStep(currentStep, state.getState());
 
         if (errors.length > 0) {
             validation.showErrors(errors);
-            showValidationSummary(currentStepElement, errors);
 
             // Show toast
             showToast('error', 'Validation Error', `Please fix ${errors.length} error(s) before continuing.`);
@@ -685,9 +687,6 @@ window.HRMS_Wizard = (function() {
             return false;
         }
 
-        // Clear errors on success
-        showValidationSummary(currentStepElement, []);
-
         // Remove error from stepper
         const currentStepperItem = document.querySelector(`.stepper-item[data-step="${currentStep}"]`);
         if (currentStepperItem) {
@@ -698,54 +697,11 @@ window.HRMS_Wizard = (function() {
     }
 
     function refreshValidationFeedback() {
-        const stepElement = document.getElementById(`step-${currentStep}`);
-        const summary = stepElement?.querySelector('.validation-summary');
-        if (!summary || summary.hidden) return;
+        if (validationAttemptedStep !== currentStep) return;
 
         const errors = validation.validateStep(currentStep, state.getState());
-        showValidationSummary(stepElement, errors, false);
         const currentStepperItem = document.querySelector(`.stepper-item[data-step="${currentStep}"]`);
         currentStepperItem?.classList.toggle('error', errors.length > 0);
-    }
-
-    function showValidationSummary(stepElement, errors, shouldFocus = true) {
-        if (!stepElement) return;
-
-        const form = stepElement.querySelector('form');
-        if (!form) return;
-
-        let summary = form.querySelector('.validation-summary');
-        if (!summary) {
-            summary = document.createElement('div');
-            summary.className = 'alert alert-error validation-summary';
-            summary.tabIndex = -1;
-            summary.setAttribute('role', 'alert');
-            summary.setAttribute('aria-live', 'assertive');
-
-            const content = document.createElement('div');
-            content.className = 'alert-content';
-            const title = document.createElement('p');
-            title.className = 'alert-title';
-            title.textContent = 'Please correct these items before continuing:';
-            const list = document.createElement('ul');
-            list.className = 'alert-message validation-summary-list';
-            content.append(title, list);
-            summary.appendChild(content);
-            form.insertBefore(summary, form.firstChild);
-        }
-
-        const list = summary.querySelector('.validation-summary-list');
-        list.replaceChildren(...errors.map(error => {
-            const item = document.createElement('li');
-            item.textContent = error.message;
-            return item;
-        }));
-        summary.hidden = errors.length === 0;
-
-        if (errors.length > 0 && shouldFocus) {
-            summary.focus();
-            summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
     }
 
     function validateAndProceed() {
@@ -759,6 +715,7 @@ window.HRMS_Wizard = (function() {
         let targetIndex = typeof target === 'string' ? stepKeys.indexOf(target) : target;
 
         if (targetIndex < 0 || targetIndex >= stepKeys.length) return;
+        if (targetIndex > currentStepIndex + 1) return;
 
         // Validate current step before leaving (except when going back)
         if (targetIndex > currentStepIndex) {

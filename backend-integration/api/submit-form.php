@@ -9,6 +9,7 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/submission-serializer.php';
 require_once __DIR__ . '/../config/submission-staging.php';
+require_once __DIR__ . '/../config/submission-access.php';
 require_once __DIR__ . '/../config/hrms-repository.php';
 
 session_start();
@@ -66,17 +67,18 @@ try {
         throw new DomainException('Your employee record could not be found. Please contact HR.');
     }
 
-    $pending = $pdo->prepare("
-        SELECT id
+    $existingSubmission = $pdo->prepare("
+        SELECT status
         FROM employee_form_submissions
-        WHERE employee_id = ? AND status IN ('submitted', 'pending')
+        WHERE employee_id = ? AND status IN ('submitted', 'pending', 'approved')
         ORDER BY id DESC
         LIMIT 1
         FOR UPDATE
     ");
-    $pending->execute([$employeeId]);
-    if ($pending->fetchColumn() !== false) {
-        throw new DomainException('Your form is already waiting for HR approval.');
+    $existingSubmission->execute([$employeeId]);
+    $existingStatus = $existingSubmission->fetchColumn();
+    if ($existingStatus !== false) {
+        throw new DomainException(employeeSubmissionLockoutMessage(['status' => $existingStatus]));
     }
 
     $rejected = $pdo->prepare("

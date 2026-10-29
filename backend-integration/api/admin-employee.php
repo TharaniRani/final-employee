@@ -147,12 +147,6 @@ function adminEmployeePromoteDocument(
     string $value,
     array &$promotedDocuments
 ): string {
-    if (!str_starts_with(str_replace('\\', '/', $value), 'employees_temp_documents/')) {
-        return $value;
-    }
-    if (isset($promotedDocuments[$value])) {
-        return $promotedDocuments[$value];
-    }
     $documentTypes = [
         'aadhar_copy' => 'aadhaar',
         'pan_copy' => 'pan',
@@ -165,6 +159,25 @@ function adminEmployeePromoteDocument(
         'pay_slip' => 'experience_payslip',
         'experience_letter_path' => 'experience_letter'
     ];
+    if (!str_starts_with(str_replace('\\', '/', $value), 'employees_temp_documents/')) {
+        if (basename(str_replace('\\', '/', $value)) !== $value ||
+            submissionResolveStoredDocumentPath(
+                dirname(__DIR__, 2),
+                $employeeId,
+                $documentTypes[$column] ?? '',
+                $value
+            ) === null) {
+            return $value;
+        }
+        $value = submissionTemporaryDocumentRelativePath(
+            $employeeId,
+            $documentTypes[$column],
+            $value
+        );
+    }
+    if (isset($promotedDocuments[$value])) {
+        return $promotedDocuments[$value];
+    }
     if (!isset($documentTypes[$column])) {
         throw new DomainException('A replacement document is assigned to an unsupported employee field.');
     }
@@ -175,14 +188,8 @@ function adminEmployeePromoteDocument(
         $value
     );
     if ($result['temporary_path'] !== null) {
-        $updateDocument = $pdo->prepare("
-            UPDATE employee_documents
-            SET file_path = ?
-            WHERE employee_id = ? AND file_path = ?
-        ");
-        $updateDocument->execute([$result['path'], $employeeId, $value]);
+        $promotedDocuments[$value] = $result['path'];
     }
-    $promotedDocuments[$value] = $result['path'];
     return $result['path'];
 }
 
@@ -414,13 +421,6 @@ function adminEmployeeApplyStagedChanges(
                 );
                 $document['file_path'] = $result['path'];
                 $promotedDocuments[$oldPath] = $result['path'];
-                if ($result['temporary_path'] !== null) {
-                    $updateDocument = $pdo->prepare("
-                        UPDATE employee_documents SET file_path = ?
-                        WHERE employee_id = ? AND file_path = ?
-                    ");
-                    $updateDocument->execute([$result['path'], $employeeId, $oldPath]);
-                }
             }
         }
     }
@@ -1071,13 +1071,24 @@ try {
                         if ($newPath === '' || $newPath === $oldPath) {
                             continue;
                         }
-                        $documentCheck = $pdo->prepare("
-                            SELECT 1 FROM employee_documents
-                            WHERE employee_id = ? AND file_path = ?
-                            LIMIT 1
-                        ");
-                        $documentCheck->execute([$employeeId, $newPath]);
-                        if ($documentCheck->fetchColumn() === false) {
+                        $columnTypes = [
+                            'certificate_file_path' => 'education_certificate',
+                            'experience_letter_file_path' => 'experience_letter',
+                            'pay_slip_file_path' => 'experience_payslip',
+                            'file_path' => (string) ($entry['type'] ?? 'other_document')
+                        ];
+                        $documentType = $columnTypes[$documentColumn] ?? '';
+                        if ($documentType === 'driving_license') {
+                            $documentType = 'driving-license';
+                        } elseif ($documentType === 'police_verification') {
+                            $documentType = 'police-verification';
+                        }
+                        if (submissionResolveStoredDocumentPath(
+                            dirname(__DIR__, 2),
+                            $employeeId,
+                            $documentType,
+                            $newPath
+                        ) === null) {
                             throw new DomainException('A replacement document is not available for this employee.');
                         }
                     }
@@ -1148,18 +1159,12 @@ try {
                         throw new DomainException('Choose a valid replacement document.');
                     }
                     if ($value !== '') {
-                        $documentCheck = $pdo->prepare("
-                            SELECT 1
-                            FROM employee_documents
-                            WHERE employee_id = ? AND file_path = ? AND document_type = ?
-                            LIMIT 1
-                        ");
-                        $documentCheck->execute([
+                        if (submissionResolveStoredDocumentPath(
+                            dirname(__DIR__, 2),
                             $employeeId,
-                            $value,
-                            $definition['document_type']
-                        ]);
-                        if ($documentCheck->fetchColumn() === false) {
+                            $definition['document_type'],
+                            $value
+                        ) === null) {
                             throw new DomainException('The replacement document is not available for this employee.');
                         }
                     }
@@ -1458,7 +1463,7 @@ try {
         'history' => $history,
         'fields' => $fields,
         'field_options' => $fieldOptions,
-        'documents' => getHrmsEmployeeDocuments($pdo, (int) $employeeId),
+        'documents' => [],
         'legacy_documents' => getHrmsLegacyDocumentNames($pdo, (int) $employeeId)
     ], JSON_INVALID_UTF8_SUBSTITUTE);
 } catch (DomainException $e) {

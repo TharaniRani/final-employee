@@ -45,18 +45,6 @@ $stepIndex = $stepData['stepIndex'] ?? 9;
                 </fieldset>
             </div>
 
-            <div id="validation-summary" class="alert alert-error" style="display: none;" role="alert">
-                <svg class="alert-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <div class="alert-content">
-                    <div class="alert-title">Please fix the following errors before submitting</div>
-                    <ul id="validation-error-list" class="alert-message" style="margin: 0.5rem 0 0; padding-left: 1.5rem;"></ul>
-                </div>
-            </div>
-
             <div id="submission-error" class="alert alert-error" style="display: none;" role="alert" aria-live="assertive">
                 <svg class="alert-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"></circle>

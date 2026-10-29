@@ -783,12 +783,12 @@ window.HRMS_Review = (function() {
         });
     }
 
-    function openFilePreview(fileId, fileName) {
+    function beginFilePreview(fileName) {
         const modal = document.getElementById('file-preview-modal');
         const modalBody = document.getElementById('file-preview-body');
         const modalTitle = document.getElementById('file-preview-title');
 
-        if (!modal || !modalBody || !modalTitle) return;
+        if (!modal || !modalBody || !modalTitle) return null;
 
         modalTitle.textContent = fileName || 'Document Preview';
         modalBody.innerHTML = `
@@ -806,86 +806,101 @@ window.HRMS_Review = (function() {
             activePreviewUrl = null;
         }
 
-        // Get the file blob
+        return { modalBody, requestId };
+    }
+
+    function showFilePreviewError(modalBody, message) {
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-error text-center p-4';
+        const content = document.createElement('div');
+        content.className = 'alert-content';
+        const title = document.createElement('div');
+        title.className = 'alert-title';
+        title.textContent = 'Unable to Preview Document';
+        const details = document.createElement('div');
+        details.className = 'alert-message';
+        details.textContent = message;
+        content.append(title, details);
+        alert.appendChild(content);
+        modalBody.replaceChildren(alert);
+    }
+
+    function renderFilePreview(blob, fileName, modalBody, requestId) {
+        if (requestId !== previewRequestId) return;
+        if (!blob) {
+            showFilePreviewError(modalBody, 'The document could not be loaded for preview.');
+            return;
+        }
+
+        const fileUrl = URL.createObjectURL(blob);
+        activePreviewUrl = fileUrl;
+        const contentType = String(blob.type || '').toLowerCase();
+        const isImage = contentType === 'image/jpeg' || contentType === 'image/png' ||
+            /\.(jpg|jpeg|png)$/i.test(fileName || '');
+        const isPdf = contentType === 'application/pdf' || /\.pdf$/i.test(fileName || '');
+
+        if (isImage) {
+            const image = document.createElement('img');
+            image.src = fileUrl;
+            image.alt = fileName || 'Uploaded document';
+            image.style.maxWidth = '100%';
+            image.style.height = 'auto';
+            image.style.maxHeight = '70vh';
+            image.addEventListener('error', () => {
+                if (requestId === previewRequestId) {
+                    showFilePreviewError(modalBody, 'The image could not be loaded.');
+                }
+            });
+            modalBody.replaceChildren(image);
+        } else if (isPdf) {
+            const frame = document.createElement('iframe');
+            frame.src = fileUrl;
+            frame.title = fileName || 'Document preview';
+            frame.style.width = '100%';
+            frame.style.height = '70vh';
+            frame.style.border = 'none';
+            modalBody.replaceChildren(frame);
+        } else {
+            const message = document.createElement('p');
+            message.className = 'text-secondary mt-2';
+            message.textContent = 'Preview is not available for this file type.';
+            const link = document.createElement('a');
+            link.href = fileUrl;
+            link.download = fileName || 'employee-document';
+            link.className = 'btn btn-primary';
+            link.textContent = 'Download Document';
+            modalBody.replaceChildren(link, message);
+        }
+    }
+
+    function openFilePreview(fileId, fileName) {
+        const preview = beginFilePreview(fileName);
+        if (!preview) return;
+
         getFilePreviewBlob(fileId).then(blob => {
-            if (requestId !== previewRequestId) return;
-            if (!blob) {
-                modalBody.innerHTML = `
-                    <div class="alert alert-error text-center p-4">
-                        <svg class="alert-icon mx-auto mb-2" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <div class="alert-content">
-                            <div class="alert-title">Unable to Preview Document</div>
-                            <div class="alert-message">The document could not be loaded for preview. Please download it instead.</div>
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-
-            const fileUrl = URL.createObjectURL(blob);
-            activePreviewUrl = fileUrl;
-            const contentType = String(blob.type || '').toLowerCase();
-            const isImage = contentType === 'image/jpeg' || contentType === 'image/png' ||
-                /\.(jpg|jpeg|png)$/i.test(fileName || '');
-            const isPdf = contentType === 'application/pdf' || /\.pdf$/i.test(fileName || '');
-
-            if (isImage) {
-                const image = document.createElement('img');
-                image.src = fileUrl;
-                image.alt = fileName || 'Uploaded document';
-                image.style.maxWidth = '100%';
-                image.style.height = 'auto';
-                image.style.maxHeight = '70vh';
-                image.addEventListener('error', () => {
-                    if (requestId !== previewRequestId) return;
-
-                    const alert = document.createElement('div');
-                    alert.className = 'alert alert-error text-center p-4';
-                    const content = document.createElement('div');
-                    content.className = 'alert-content';
-                    const title = document.createElement('div');
-                    title.className = 'alert-title';
-                    title.textContent = 'Failed to Load Image';
-                    const message = document.createElement('div');
-                    message.className = 'alert-message';
-                    message.textContent = 'The image could not be loaded.';
-                    content.append(title, message);
-                    alert.appendChild(content);
-                    modalBody.replaceChildren(alert);
-                });
-                modalBody.replaceChildren(image);
-            } else if (isPdf) {
-                modalBody.innerHTML = `
-                    <iframe src="${fileUrl}" style="width: 100%; height: 70vh; border: none;" title="${escapeHtml(fileName)}"></iframe>
-                `;
-            } else {
-                modalBody.innerHTML = `
-                    <div class="text-center p-4">
-                        <a href="${fileUrl}" target="_blank" class="btn btn-primary">Open Document</a>
-                        <p class="text-secondary mt-2">Preview not available for this file type. Click the button to open.</p>
-                    </div>
-                `;
-            }
+            renderFilePreview(blob, fileName, preview.modalBody, preview.requestId);
         }).catch(error => {
-            if (requestId !== previewRequestId) return;
+            if (preview.requestId !== previewRequestId) return;
             console.error('Error loading file preview:', error);
-            modalBody.innerHTML = `
-                <div class="alert alert-error text-center p-4">
-                    <svg class="alert-icon mx-auto mb-2" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="12"></line>
-                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
-                    <div class="alert-content">
-                        <div class="alert-title">Unable to Preview Document</div>
-                        <div class="alert-message">The document could not be loaded for preview. Please download it instead.</div>
-                    </div>
-                </div>
-            `;
+            showFilePreviewError(preview.modalBody, 'The document could not be loaded for preview.');
+        });
+    }
+
+    function openExistingDocumentPreview(url, fileName) {
+        const preview = beginFilePreview(fileName);
+        if (!preview) return;
+
+        fetch(url, { credentials: 'same-origin' }).then(response => {
+            if (!response.ok) {
+                throw new Error(`Document preview request failed with status ${response.status}`);
+            }
+            return response.blob();
+        }).then(blob => {
+            renderFilePreview(blob, fileName, preview.modalBody, preview.requestId);
+        }).catch(error => {
+            if (preview.requestId !== previewRequestId) return;
+            console.error('Error loading existing document preview:', error);
+            showFilePreviewError(preview.modalBody, 'The existing document could not be loaded for preview.');
         });
     }
 
@@ -897,6 +912,9 @@ window.HRMS_Review = (function() {
             const record = await window.HRMS_FileUpload.getPendingFile(fileId);
             if (record && record.file) {
                 return record.file;
+            }
+            if (record?.serverFileId) {
+                return api.downloadDocument(record.serverFileId);
             }
             return null;
         }
@@ -1246,6 +1264,7 @@ Please keep this for your records.
     return {
         init,
         updateReview,
-        previewFile: openFilePreview
+        previewFile: openFilePreview,
+        previewExistingDocument: openExistingDocumentPreview
     };
 })();

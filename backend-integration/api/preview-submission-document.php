@@ -184,23 +184,39 @@ try {
         exit('Document not found for this submission.');
     }
 
-    $filePath = resolveSubmissionDocumentPath($pdo, $employeeId, $documentPath);
+    $documentStorageType = null;
+    if ($document === '' && $side === 'requested' && isset($scalarDocuments[$field])) {
+        $documentStorageType = [
+            'employee_identification.aadhar_copy' => 'aadhaar',
+            'employee_identification.pan_copy' => 'pan',
+            'employee_identification.photo' => 'photo',
+            'employee_identification.resume' => 'resume',
+            'employee_identification.staff_sign' => 'signature',
+            'employee_identification.driving' => 'driving'
+        ][$field] ?? null;
+    } elseif ($document === '' && $side === 'requested' && $field === 'educational_qualifications.all') {
+        $documentStorageType = 'education_certificate';
+    } elseif ($document === '' && $side === 'requested' && $field === 'employee_previous_experience.all') {
+        $documentStorageType = $column === 'pay_slip' ? 'experience_payslip' : 'experience_letter';
+    }
+
+    $filePath = resolveSubmissionDocumentPath($pdo, $employeeId, $documentPath, $documentStorageType);
     if ($filePath === null) {
         http_response_code(404);
         exit('Document file is unavailable.');
     }
 
     $fileInfo = new finfo(FILEINFO_MIME_TYPE);
-    $mimeType = $fileInfo->file($filePath);
-    $allowedMimeTypes = ['application/pdf', 'image/jpeg', 'image/png'];
-    if (!in_array($mimeType, $allowedMimeTypes, true)) {
-        http_response_code(415);
-        exit('This file type cannot be previewed.');
-    }
-
+    $detectedMimeType = $fileInfo->file($filePath);
+    $inlineTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+    $isPreviewable = in_array($detectedMimeType, $inlineTypes, true);
+    $mimeType = $isPreviewable ? $detectedMimeType : 'application/octet-stream';
     header('Content-Type: ' . $mimeType);
     header('Content-Length: ' . (string) filesize($filePath));
-    header('Content-Disposition: inline; filename="employee-document.' . previewDocumentExtension($mimeType) . '"');
+    header(
+        'Content-Disposition: ' . ($isPreviewable ? 'inline' : 'attachment') .
+        '; filename="document"; filename*=UTF-8\'\'' . rawurlencode(basename($documentPath))
+    );
     readfile($filePath);
 } catch (Throwable $e) {
     error_log('HR document preview failed: ' . $e->getMessage());
@@ -267,7 +283,12 @@ function submissionDocumentPathFromFormData(array $formData, string $document, i
     return is_string($path) ? $path : null;
 }
 
-function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $storedPath): ?string
+function resolveSubmissionDocumentPath(
+    PDO $pdo,
+    int $employeeId,
+    string $storedPath,
+    ?string $documentType = null
+): ?string
 {
     $projectRoot = dirname(__DIR__, 2);
     $relativePath = str_replace('\\', '/', trim($storedPath));
@@ -343,67 +364,59 @@ function resolveSubmissionDocumentPath(PDO $pdo, int $employeeId, string $stored
             return $candidate;
         }
 
-        $document = $pdo->prepare("
-            SELECT file_path, stored_name, document_type
-            FROM employee_documents
-            WHERE employee_id = ? AND stored_name = ?
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $document->execute([$employeeId, $matches[2]]);
-        $record = $document->fetch(PDO::FETCH_ASSOC);
-        if (!$record) {
-            return null;
-        }
-        $categorizedPath = submissionDocumentAbsolutePath(
-            $projectRoot,
-            $employeeId,
-            (string) $record['document_type'],
-            (string) $record['stored_name']
+        return null;
+    }
+
+    if (preg_match(
+        '#^employees_temp_documents/([a-z0-9_-]+)/([^/]+)$#',
+        $relativePath,
+        $matches
+    ) && in_array($matches[1], [
+        'aadhar', 'pan', 'photo', 'sign', 'resume', 'certificate_path',
+        'pg_degree_doc', 'driving', 'others', 'ccs'
+    ], true) && basename($matches[2]) === $matches[2]) {
+        $candidate = realpath($projectRoot . DIRECTORY_SEPARATOR .
+            str_replace('/', DIRECTORY_SEPARATOR, $relativePath));
+        $temporaryRoot = realpath(
+            $projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' .
+            DIRECTORY_SEPARATOR . $matches[1]
         );
-        $resolvedPath = resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $categorizedPath);
-        if ($resolvedPath !== null) {
-            return $resolvedPath;
+        if ($candidate !== false && $temporaryRoot !== false &&
+            str_starts_with(strtolower($candidate), strtolower($temporaryRoot . DIRECTORY_SEPARATOR)) &&
+            is_file($candidate)) {
+            return $candidate;
         }
-        return is_string($record['file_path'])
-            ? resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $record['file_path'])
-            : null;
+        return null;
     }
 
     if (basename($relativePath) !== $relativePath) {
         return null;
     }
+
+    if ($documentType !== null) {
+        $temporaryRelativePath = submissionTemporaryDocumentRelativePath(
+            $employeeId,
+            $documentType,
+            $relativePath
+        );
+        $candidate = realpath($projectRoot . DIRECTORY_SEPARATOR .
+            str_replace('/', DIRECTORY_SEPARATOR, $temporaryRelativePath));
+        $temporaryRoot = realpath(
+            $projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents' .
+            DIRECTORY_SEPARATOR . submissionEmployeeDocumentFolder($documentType)
+        );
+        if ($candidate !== false && $temporaryRoot !== false &&
+            str_starts_with(strtolower($candidate), strtolower($temporaryRoot . DIRECTORY_SEPARATOR)) &&
+            is_file($candidate)) {
+            return $candidate;
+        }
+    }
+
     $legacyDocumentPath = resolveLegacyEmployeeDocumentPath($pdo, $employeeId, $projectRoot, $relativePath);
     if ($legacyDocumentPath !== null) {
         return $legacyDocumentPath;
     }
-    $stmt = $pdo->prepare("
-        SELECT file_path, stored_name, document_type
-        FROM employee_documents
-        WHERE employee_id = ? AND (stored_name = ? OR original_name = ?)
-        ORDER BY id DESC
-        LIMIT 1
-    ");
-    $stmt->execute([$employeeId, $relativePath, $relativePath]);
-    $document = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$document) {
-        return null;
-    }
-
-    $categorizedPath = submissionDocumentAbsolutePath(
-        $projectRoot,
-        $employeeId,
-        (string) $document['document_type'],
-        (string) $document['stored_name']
-    );
-    $resolvedCategorizedPath = resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $categorizedPath);
-    if ($resolvedCategorizedPath !== null) {
-        return $resolvedCategorizedPath;
-    }
-
-    return is_string($document['file_path'])
-        ? resolveAbsoluteEmployeeUpload($projectRoot, $employeeId, $document['file_path'])
-        : null;
+    return null;
 }
 
 function resolveLegacyEmployeeDocumentPath(
@@ -480,18 +493,21 @@ function resolveAbsoluteEmployeeUpload(string $projectRoot, int $employeeId, str
         return null;
     }
 
-    if ($legacyUploadRoot !== false &&
-        str_starts_with(strtolower($candidate), strtolower($legacyUploadRoot . DIRECTORY_SEPARATOR))) {
-        return $candidate;
-    }
-
+    $allowedRoots = [
+        $legacyUploadRoot,
+        realpath($projectRoot . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR .
+            'requests' . DIRECTORY_SEPARATOR . 'employees'),
+        realpath($projectRoot . DIRECTORY_SEPARATOR . 'employees_temp_documents')
+    ];
     foreach (submissionDocumentCategories() as $category) {
-        $categoryUploadRoot = realpath(
+        $allowedRoots[] = realpath(
             $projectRoot . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'documents' .
             DIRECTORY_SEPARATOR . $category . DIRECTORY_SEPARATOR . $employeeId
         );
-        if ($categoryUploadRoot !== false &&
-            str_starts_with(strtolower($candidate), strtolower($categoryUploadRoot . DIRECTORY_SEPARATOR))) {
+    }
+    foreach ($allowedRoots as $allowedRoot) {
+        if ($allowedRoot !== false &&
+            str_starts_with(strtolower($candidate), strtolower($allowedRoot . DIRECTORY_SEPARATOR))) {
             return $candidate;
         }
     }

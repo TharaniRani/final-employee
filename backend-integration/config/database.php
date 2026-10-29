@@ -54,7 +54,7 @@ if ($databasePort === false) {
 $GLOBALS['HRMS_DATABASE_CONFIG'] = [
     'host' => getenv('DB_HOST') ?: '127.0.0.1',
     'port' => $databasePort,
-    'dbname' => getenv('DB_NAME') ?: 'final',
+    'dbname' => getenv('DB_NAME') ?: 'db_employee',
     'username' => getenv('DB_USER') ?: 'root',
     'password' => getenv('DB_PASS') === false ? '' : getenv('DB_PASS'),
     'charset' => getenv('DB_CHARSET') ?: 'utf8mb4',

@@ -115,27 +115,38 @@ HRMS-form/
 
    Supported settings are `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`,
    `DB_CHARSET`, `ADMIN_DB_NAME`, `ADMIN_DB_HOST`, `ADMIN_DB_PORT`,
-   `ADMIN_DB_USER`, `ADMIN_DB_PASS`, and `OTP_EXPIRY_MINUTES`. Environment
+   `ADMIN_DB_USER`, `ADMIN_DB_PASS`, `OTP_EXPIRY_MINUTES`, `OTP_DELIVERY_MODE`,
+   `OMNI_PORTAL_API_KEY`, `OMNI_WHATSAPP_API_URL`,
+   `OMNI_WHATSAPP_OTP_TEMPLATE`, and `OMNI_WHATSAPP_OTP_LANGUAGE`. Environment
    variables supplied by Apache/the hosting platform take precedence over values
    from `.env`.
 
-   OTP delivery is currently local-development-only because no SMS provider is
-   configured. From a loopback request on `localhost`, the generated OTP is
-   returned only to the local browser and shown in the login page's OTP popup.
-   It is never returned for requests from other hosts. Those requests are
-   rejected until an SMS provider is configured.
-   Local development OTPs are stored as plain six-digit values in the
-   `otp_verifications.otp` column for convenience; this is not suitable for
-   production. Existing `otp_hash` values remain supported, and new local
-   requests clear that field while keeping the generated value in `otp`.
-   The popup includes Copy OTP and OK actions; selecting OK opens the existing
-   OTP entry step. Production SMS delivery requires configuring an SMS provider
-   before enabling OTP requests outside local development.
-   Locally generated OTPs are stored directly in `otp_verifications.otp` for
-   development convenience; existing `otp_hash` values remain supported.
-   OTPs expire after five minutes by default, allow at most five verification
-   attempts, enforce a 60-second resend cooldown, and limit requests to three
-   per 15-minute window.
+   WhatsApp OTP delivery uses Tata Tele Business's WhatsApp Cloud endpoint. To
+   enable it, set `OTP_DELIVERY_MODE=whatsapp` and configure the provider-issued
+   `OMNI_PORTAL_API_KEY` in the server environment or ignored project-root
+   `.env`. The default endpoint is
+   `https://wb.omni.tatatelebusiness.com/whatsapp-cloud/messages`; the default
+   approved template is `otp_service` in English. Override the endpoint/template
+   settings only with values supplied for your provider account. PHP's cURL
+   extension must be enabled. Never put provider credentials in browser
+   JavaScript, source control, or logs.
+
+   For a local XAMPP `.env`, add the following settings using the rotated key:
+
+   ```dotenv
+   OTP_DELIVERY_MODE=whatsapp
+   OMNI_PORTAL_API_KEY=REPLACE_WITH_ROTATED_PROVIDER_KEY
+   OMNI_WHATSAPP_OTP_TEMPLATE=otp_service
+   OMNI_WHATSAPP_OTP_LANGUAGE=en
+   ```
+
+   When `OTP_DELIVERY_MODE` is omitted, loopback requests use local development
+   mode and non-local requests are disabled. Local mode requires localhost and
+   shows a development OTP popup; WhatsApp mode sends the code to the registered
+   Indian mobile number and does not return the OTP to the browser. Both modes
+   store only a password hash in `otp_verifications.otp_hash`. OTPs expire after
+   five minutes by default, allow at most five verification attempts, enforce a
+   60-second resend cooldown, and limit requests to three per 15-minute window.
 
    Employee data is loaded from the finalized `employees`, `employee_contact`,
    `employee_employment`, `employee_identification`, education, experience, and
@@ -146,13 +157,19 @@ HRMS-form/
    `submission_id`. A repeatable section is staged only when that section differs
    from the finalized records. All pre-existing temporary rows remain unlinked
    baseline rows. A final submission is marked `pending`; it does not update
-   finalized HRMS employee records. Uploaded-file metadata is stored in
-   `employee_documents`. New submissions are stored using
+   finalized HRMS employee records. Uploaded files are stored on disk and their
+   filenames are written to the relevant existing `temp_*` document columns;
+   no separate document registry table is used. New submissions are stored using
    the compact JSON structure produced by
    `backend-integration/config/submission-serializer.php`; document references
-   in that JSON are employee-owned relative paths. New and replacement files
-   remain under `employees_temp_documents/<category>/<employee-id>/` while HR
-   reviews them. After approval, they are promoted to the existing
+   in that JSON are validated, session-bound references resolved to safe paths.
+   New and replacement files
+   remain under `employees_temp_documents/<category>/<original-filename>` while
+   HR reviews them. The category folder is shared, so duplicate filenames in
+   that category are rejected rather than overwritten. Uploads accept any file
+   type except executable and active web-script formats, up to 5 MB; other types
+   are downloaded as attachments rather than displayed inline. After approval,
+   files are promoted to the existing
    `assets/requests/employees/<category>/` folders and the matching
    `employee_identification` or `educational_qualifications` path is updated.
    Rejected changes do not replace the employee's existing document. Existing
@@ -244,13 +261,13 @@ HRMS-form/
    and a **View Existing** link; missing documents should offer an upload field.
 2. Replace one existing document and upload one missing document. Submit the
    form and confirm their files are in
-   `employees_temp_documents/<category>/<employee-id>/` and their
-   `employee_documents.file_path` values are relative paths under that folder.
+   `employees_temp_documents/<category>/<original-filename>` and the matching
+   `temp_*` document columns contain the original filename only.
 3. Sign in to the HR review page using the configured local HR account. Open
    the employee submission and approve it from the bottom of the profile page.
    Confirm the new file is moved to
-   `assets/requests/employees/<category>/`, the permanent database path is
-   relative, and the original filename/path was not overwritten.
+   `assets/requests/employees/<category>/`, and the corresponding permanent
+   employee document column contains the permanent relative path.
 4. Directly opening a file URL under either document folder should be denied;
    viewing existing employee files should work only through the authenticated
    endpoint.
@@ -260,17 +277,17 @@ document-folder access rules take effect.
 
    In-progress form values are saved as browser-local JSON scoped to the
    verified mobile number and restored after a refresh. Selected file contents
-   are kept in browser IndexedDB. Neither form drafts nor files are sent to the
-   server until final submission; the files are then uploaded and their IDs are
-   included with the submitted form. Browser-local drafts and files are cleared
-   after successful submission.
+   are kept in browser IndexedDB. The files are uploaded to temporary storage
+   when the employee submits; the submission includes signed references to
+   those uploads. Browser-local drafts and files are cleared after successful
+   submission.
 
 4. **Create Document Directories**:
    ```bash
-   mkdir -p /xampp/htdocs/HRMS-form/uploads/documents
    mkdir -p /xampp/htdocs/HRMS-form/employees_temp_documents
-   chmod -R 755 /xampp/htdocs/HRMS-form/uploads
-   # On Linux: chown -R www-data:www-data /xampp/htdocs/HRMS-form/uploads
+   mkdir -p /xampp/htdocs/HRMS-form/assets/requests/employees
+   chmod -R 755 /xampp/htdocs/HRMS-form/employees_temp_documents
+   # On Linux: chown -R www-data:www-data /xampp/htdocs/HRMS-form/employees_temp_documents
    ```
 
 5. **Configure Web Server**:
@@ -296,8 +313,13 @@ APP_BASE_PATH=/HRMS-form
 SESSION_LIFETIME=3600
 OTP_EXPIRY_MINUTES=5
 MAX_FILE_SIZE=5242880
-ALLOWED_FILE_TYPES=application/pdf,image/jpeg,image/png
 ```
+
+Uploads accept any non-executable file format up to 5 MB. Files are stored using
+their sanitized original filename directly inside the matching
+`employees_temp_documents/<category>/` folder; duplicate names within a category
+must be renamed before uploading. Executable and active web-script formats are
+blocked for safety.
 
 ### Customization
 
@@ -350,13 +372,13 @@ To add/modify fields:
   - Files stored outside web root (configured)
 - **OTP Security**:
   - Generated server-side with crypto-secure random
-  - Local OTP values are stored in plain text for development convenience and
-    must not be used in production; legacy `otp_hash` values remain supported
+  - OTPs are stored as password hashes and never returned to the browser in
+    WhatsApp mode
   - Expires after five minutes by default and is marked used after successful
     verification
   - Maximum 5 verification attempts
   - 60-second resend cooldown and maximum 3 requests per 15-minute window
-  - Local-only OTP popup; no SMS provider is currently configured
+  - Supports local development preview or server-side WhatsApp delivery
 - **Session Management**: HttpOnly/SameSite cookies and session ID regeneration
   after OTP verification
 - **SQL Injection Prevention**: Prepared statements throughout
@@ -446,10 +468,11 @@ RUN chown -R www-data:www-data /var/www/html/uploads
 
 ### Common Issues
 
-**Local OTP not visible**: Use `http://localhost/...` (or `http://127.0.0.1/...`)
-on the development machine. The OTP popup is intentionally unavailable to
-requests from other hosts; external OTP delivery requires a configured SMS
-provider.
+**OTP not delivered**: Check that `OTP_DELIVERY_MODE=whatsapp` and the
+provider-issued `OMNI_PORTAL_API_KEY` are configured in the server environment,
+PHP cURL is enabled, and the provider account has approved the configured
+template. Without an explicit delivery mode, only localhost requests use the
+local OTP popup; other hosts have delivery disabled.
 
 **File upload fails**: Check `upload_max_filesize` and `post_max_size` in php.ini
 

@@ -9,7 +9,14 @@ window.HRMS_FileUpload = (function() {
     const api = window.HRMS_API;
     const state = window.HRMS_FormState;
     const maxFileSize = config.validation.maxFileSize;
-    const allowedTypes = config.validation.allowedFileTypes;
+    const blockedExtensions = new Set([
+        'ade', 'adp', 'apk', 'app', 'asp', 'aspx', 'asax', 'ascx', 'ashx', 'asmx',
+        'bat', 'bash', 'cmd', 'com', 'cgi', 'cshtml', 'dll', 'exe', 'fcgi', 'hta',
+        'htm', 'html', 'jar', 'js', 'jsp', 'jspx', 'mjs', 'msi', 'phtml', 'phar',
+        'php', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps', 'pl', 'ps1', 'py',
+        'rb', 'sh', 'shtm', 'shtml', 'stm', 'svg', 'vbe', 'vbs', 'vbhtml', 'war',
+        'wsf', 'wsh', 'xhtml', 'xsl', 'xslt'
+    ]);
 
     const staticFileStatePaths = {
         'resume-upload': 'personal_basic.resume_file_id',
@@ -27,14 +34,15 @@ window.HRMS_FileUpload = (function() {
     const documentNames = new Map();
     let persistedFileSyncRegistered = false;
     let pendingFilesDatabase;
+    let pendingFilesDatabasePromise;
     const pendingFilesStore = 'pendingFiles';
     const localFilePrefix = 'local-file:';
     const pendingFileOwner = String(config.verifiedMobile || '').replace(/\D/g, '');
 
     function openPendingFilesDatabase() {
-        if (pendingFilesDatabase) return pendingFilesDatabase;
+        if (pendingFilesDatabasePromise) return pendingFilesDatabasePromise;
 
-        pendingFilesDatabase = new Promise((resolve, reject) => {
+        const opening = new Promise((resolve, reject) => {
             const request = indexedDB.open('hrms-onboarding-files', 1);
             request.onupgradeneeded = () => {
                 const database = request.result;
@@ -43,47 +51,88 @@ window.HRMS_FileUpload = (function() {
                     store.createIndex('owner', 'owner', { unique: false });
                 }
             };
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error || new Error('Could not open browser file storage'));
-            request.onblocked = () => reject(new Error('Browser file storage is blocked by another tab'));
+            request.onsuccess = () => {
+                const database = request.result;
+                pendingFilesDatabase = database;
+                database.onversionchange = () => {
+                    database.close();
+                    if (pendingFilesDatabasePromise === opening) pendingFilesDatabasePromise = null;
+                    if (pendingFilesDatabase === database) pendingFilesDatabase = null;
+                };
+                database.onclose = () => {
+                    if (pendingFilesDatabasePromise === opening) pendingFilesDatabasePromise = null;
+                    if (pendingFilesDatabase === database) pendingFilesDatabase = null;
+                };
+                resolve(database);
+            };
+            request.onerror = () => {
+                if (pendingFilesDatabasePromise === opening) pendingFilesDatabasePromise = null;
+                reject(request.error || new Error('Could not open browser file storage'));
+            };
+            request.onblocked = () => {
+                if (pendingFilesDatabasePromise === opening) pendingFilesDatabasePromise = null;
+                reject(new Error('Browser file storage is blocked by another tab'));
+            };
         });
 
-        return pendingFilesDatabase;
+        pendingFilesDatabasePromise = opening;
+        return opening;
+    }
+
+    function invalidatePendingFilesDatabase(database) {
+        if (pendingFilesDatabase === database) {
+            pendingFilesDatabase = null;
+            pendingFilesDatabasePromise = null;
+        }
+        try {
+            database.close();
+        } catch (error) {
+            console.warn('Unable to close stale browser file storage:', error);
+        }
+    }
+
+    async function runPendingFilesTransaction(mode, createRequest, retry = true) {
+        const database = await openPendingFilesDatabase();
+        return new Promise((resolve, reject) => {
+            let transaction;
+            let request;
+            try {
+                transaction = database.transaction(pendingFilesStore, mode);
+                request = createRequest(transaction.objectStore(pendingFilesStore));
+            } catch (error) {
+                if (retry && error && error.name === 'InvalidStateError') {
+                    invalidatePendingFilesDatabase(database);
+                    runPendingFilesTransaction(mode, createRequest, false).then(resolve, reject);
+                    return;
+                }
+                reject(error);
+                return;
+            }
+
+            transaction.oncomplete = () => resolve(request ? request.result : undefined);
+            transaction.onerror = () => reject(
+                transaction.error || (request && request.error) ||
+                    new Error('Browser file storage transaction failed')
+            );
+            transaction.onabort = () => reject(
+                transaction.error || (request && request.error) ||
+                    new Error('Browser file storage transaction was cancelled')
+            );
+        });
     }
 
     async function savePendingFile(record) {
-        const database = await openPendingFilesDatabase();
-        await new Promise((resolve, reject) => {
-            const transaction = database.transaction(pendingFilesStore, 'readwrite');
-            transaction.objectStore(pendingFilesStore).put(record);
-            transaction.oncomplete = resolve;
-            transaction.onerror = () => reject(transaction.error || new Error('Could not save the selected file'));
-            transaction.onabort = () => reject(transaction.error || new Error('Saving the selected file was cancelled'));
-        });
+        await runPendingFilesTransaction('readwrite', store => store.put(record));
     }
 
     async function getPendingFile(id) {
-        const database = await openPendingFilesDatabase();
-        return new Promise((resolve, reject) => {
-            const request = database.transaction(pendingFilesStore, 'readonly')
-                .objectStore(pendingFilesStore)
-                .get(id);
-            request.onsuccess = () => resolve(request.result || null);
-            request.onerror = () => reject(request.error || new Error('Could not restore the selected file'));
-        });
+        return (await runPendingFilesTransaction('readonly', store => store.get(id))) || null;
     }
 
     async function removePendingFile(id) {
         if (!String(id).startsWith(localFilePrefix)) return;
 
-        const database = await openPendingFilesDatabase();
-        await new Promise((resolve, reject) => {
-            const transaction = database.transaction(pendingFilesStore, 'readwrite');
-            transaction.objectStore(pendingFilesStore).delete(id);
-            transaction.oncomplete = resolve;
-            transaction.onerror = () => reject(transaction.error || new Error('Could not remove the saved file'));
-            transaction.onabort = () => reject(transaction.error || new Error('Removing the saved file was cancelled'));
-        });
+        await runPendingFilesTransaction('readwrite', store => store.delete(id));
     }
 
     function createLocalFileId() {
@@ -130,7 +179,9 @@ window.HRMS_FileUpload = (function() {
                     throw new Error(`The upload response did not include an ID for "${record.originalName}".`);
                 }
                 documentNames.set(String(serverFileId), record.originalName);
-                await savePendingFile({ ...record, serverFileId });
+                const uploadedRecord = { ...record, serverFileId };
+                delete uploadedRecord.file;
+                await savePendingFile(uploadedRecord);
             }
 
             const normalizedFileId = String(serverFileId);
@@ -145,17 +196,18 @@ window.HRMS_FileUpload = (function() {
         if (!pendingFileOwner || !('indexedDB' in window)) return true;
 
         try {
-            const database = await openPendingFilesDatabase();
-            const records = await new Promise((resolve, reject) => {
-                const request = database.transaction(pendingFilesStore, 'readonly')
-                    .objectStore(pendingFilesStore)
-                    .getAll();
-                request.onsuccess = () => resolve(request.result || []);
-                request.onerror = () => reject(request.error || new Error('Could not list saved files'));
-            });
+            const records = (await runPendingFilesTransaction(
+                'readonly',
+                store => store.getAll()
+            )) || [];
             const ownerRecords = records.filter(record => record.owner === pendingFileOwner);
+            if (ownerRecords.length > 0) {
+                await runPendingFilesTransaction('readwrite', store => {
+                    ownerRecords.forEach(record => store.delete(record.id));
+                    return null;
+                });
+            }
             for (const record of ownerRecords) {
-                await removePendingFile(record.id);
                 documentNames.delete(record.id);
             }
             return true;
@@ -182,8 +234,9 @@ window.HRMS_FileUpload = (function() {
             errors.push(`File size exceeds ${formatFileSize(maxFileSize)} limit`);
         }
 
-        if (!allowedTypes.includes(file.type)) {
-            errors.push('File type not allowed. Allowed: PDF, JPG, PNG');
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (blockedExtensions.has(extension)) {
+            errors.push('This file extension is not allowed for security reasons.');
         }
 
         return {
@@ -219,7 +272,7 @@ window.HRMS_FileUpload = (function() {
             documentType,
             fieldName,
             required = true,
-            accept = '.pdf,.jpg,.jpeg,.png',
+            accept = '*/*',
             multiple = false,
             onUploadSuccess,
             onUploadError,
@@ -235,7 +288,6 @@ window.HRMS_FileUpload = (function() {
         const replaceBtn = container.querySelector('.file-upload-replace');
         const actions = container.querySelector('.file-upload-actions');
         let viewBtn = container.querySelector('.file-upload-view');
-        let existingPanel = null;
         let existingDocument = null;
 
         if (actions && !viewBtn) {
@@ -255,10 +307,11 @@ window.HRMS_FileUpload = (function() {
             currentFile = file;
             if (file) {
                 zone.hidden = false;
-                if (existingPanel) existingPanel.hidden = true;
                 zone.classList.add('has-file');
                 zone.querySelector('.file-upload-text').textContent = file.name;
-                zone.querySelector('.file-upload-hint').textContent = file.pendingUpload
+                zone.querySelector('.file-upload-hint').textContent = file.existing
+                    ? 'Previously uploaded'
+                    : file.pendingUpload
                     ? `${formatFileSize(file.size)} • Saved in this browser until submission`
                     : file.persisted
                         ? 'Previously uploaded'
@@ -269,13 +322,10 @@ window.HRMS_FileUpload = (function() {
             } else {
                 zone.classList.remove('has-file');
                 zone.querySelector('.file-upload-text').textContent = 'Upload Document';
-                zone.querySelector('.file-upload-hint').textContent = 'PDF, JPG, PNG up to 5MB';
+                zone.querySelector('.file-upload-hint').textContent = 'Any safe file type up to 5MB';
                 if (info) info.style.display = 'none';
                 if (viewBtn) viewBtn.disabled = true;
-                if (existingPanel) {
-                    existingPanel.hidden = !existingDocument;
-                }
-                zone.hidden = !!existingDocument;
+                zone.hidden = false;
             }
         }
 
@@ -356,6 +406,7 @@ window.HRMS_FileUpload = (function() {
         }
 
         function handleRemove() {
+            const restoreExistingDocument = existingDocument && !currentFile?.existing;
             currentFile = null;
             if (fileId !== null) {
                 documentNames.delete(String(fileId));
@@ -365,7 +416,16 @@ window.HRMS_FileUpload = (function() {
             }
             fileId = null;
             input.value = '';
-            updateUI(null);
+            if (restoreExistingDocument) {
+                currentFile = {
+                    name: existingDocument.filename,
+                    persisted: true,
+                    existing: true
+                };
+            } else {
+                existingDocument = null;
+            }
+            updateUI(currentFile);
             clearError(container);
             if (onFileRemove) onFileRemove();
             window.HRMS_Validation?.validateControl(container);
@@ -380,49 +440,13 @@ window.HRMS_FileUpload = (function() {
         function setExistingDocument(filename, url) {
             if (!filename || !url) return;
             existingDocument = { filename, url };
-            if (!existingPanel) {
-                existingPanel = document.createElement('div');
-                existingPanel.className = 'existing-document-panel';
-                const link = document.createElement('a');
-                link.className = 'existing-document-filename existing-document-view';
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.setAttribute('aria-label', 'Preview existing document in a new tab');
-                const eye = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                eye.setAttribute('width', '18');
-                eye.setAttribute('height', '18');
-                eye.setAttribute('viewBox', '0 0 24 24');
-                eye.setAttribute('fill', 'none');
-                eye.setAttribute('stroke', 'currentColor');
-                eye.setAttribute('stroke-width', '2');
-                eye.setAttribute('aria-hidden', 'true');
-                const eyeOutline = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                eyeOutline.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
-                const eyePupil = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                eyePupil.setAttribute('cx', '12');
-                eyePupil.setAttribute('cy', '12');
-                eyePupil.setAttribute('r', '3');
-                eye.append(eyeOutline, eyePupil);
-                const filenameText = document.createElement('span');
-                filenameText.className = 'existing-document-filename-text';
-                link.append(eye, filenameText);
-                const replace = document.createElement('button');
-                replace.type = 'button';
-                replace.className = 'btn btn-sm btn-secondary existing-document-replace';
-                replace.textContent = 'Replace';
-                replace.addEventListener('click', handleReplace);
-                existingPanel.append(link, replace);
-                container.insertBefore(existingPanel, zone);
-            }
-            existingPanel.querySelector('.existing-document-filename-text').textContent = filename;
-            const existingLink = existingPanel.querySelector('.existing-document-view');
-            existingLink.href = url;
-            existingLink.setAttribute('aria-label', `Preview ${filename} in a new tab`);
-            existingLink.target = '_blank';
-            existingLink.rel = 'noopener noreferrer';
-            existingPanel.querySelector('.existing-document-replace')
-                .setAttribute('aria-label', `Choose a replacement for ${filename}`);
-            updateUI(currentFile);
+            if (fileId !== null) return;
+            fileId = null;
+            updateUI({
+                name: filename,
+                persisted: true,
+                existing: true
+            });
             if (container.id === 'resume-upload') {
                 window.HRMS_Validation?.clearError('resume');
             }
@@ -488,6 +512,14 @@ window.HRMS_FileUpload = (function() {
             viewBtn.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
+                if (currentFile?.existing && existingDocument?.url) {
+                    if (window.HRMS_Review?.previewExistingDocument) {
+                        window.HRMS_Review.previewExistingDocument(existingDocument.url, currentFile.name);
+                    } else {
+                        showError(container, 'Document preview is unavailable. Please refresh the page and try again.');
+                    }
+                    return;
+                }
                 if (!fileId || !currentFile) return;
 
                 if (window.HRMS_Review?.previewFile) {

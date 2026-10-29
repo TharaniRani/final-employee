@@ -478,7 +478,7 @@ window.HRMS_Validation = (function() {
             ],
             'employment-details': [
             ],
-            'review': ['declaration']
+            'review': ['declaration', 'terms_accepted']
         };
 
         const fields = stepFields[stepName] || [];
@@ -491,6 +491,41 @@ window.HRMS_Validation = (function() {
                 errors.push({ path: field, message: result.message });
             }
         });
+
+        const stepElement = document.getElementById(`step-${stepName}`);
+        if (stepElement) {
+            const checkedVerificationGroups = new Set();
+            stepElement.querySelectorAll('.verification-options input[type="radio"][required]').forEach(control => {
+                const options = control.closest('.verification-options');
+                const name = control.name;
+                if (!options || !name || checkedVerificationGroups.has(name)) return;
+                checkedVerificationGroups.add(name);
+
+                const isHidden = (element) => {
+                    for (let current = element; current && current !== stepElement; current = current.parentElement) {
+                        if (
+                            current.hidden ||
+                            current.classList.contains('hidden') ||
+                            current.classList.contains('conditional-field-hidden') ||
+                            window.getComputedStyle(current).display === 'none'
+                        ) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (isHidden(options)) return;
+
+                const group = [...options.querySelectorAll('input[type="radio"]')]
+                    .filter(radio => radio.name === name);
+                if (!group.some(radio => radio.checked)) {
+                    errors.push({
+                        path: name.replace(/_verification$/, ''),
+                        message: 'Mark this information as Correct or Wrong.'
+                    });
+                }
+            });
+        }
 
         if (stepName === 'employment-details') {
             const employmentFields = [

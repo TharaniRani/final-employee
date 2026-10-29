@@ -8,6 +8,7 @@ header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/hrms-repository.php';
+require_once __DIR__ . '/../config/submission-access.php';
 
 session_start();
 
@@ -29,6 +30,15 @@ if (empty($employeeId)) {
 
 try {
     $pdo = getDatabaseConnection();
+    $existingSubmission = getEmployeeSubmissionLockout($pdo, (int) $employeeId);
+    if ($existingSubmission !== null) {
+        http_response_code(409);
+        echo json_encode([
+            'success' => false,
+            'message' => employeeSubmissionLockoutMessage($existingSubmission)
+        ]);
+        exit;
+    }
 
     $employee = getHrmsEmployeeById($pdo, (int) $employeeId);
 
@@ -38,11 +48,9 @@ try {
         echo json_encode(['success' => false, 'message' => 'Employee not found']);
         exit;
     }
-    $employee['mobile'] = $_SESSION['verified_mobile'] ?? $employee['mobile'];
+    $employee['mobile'] = (string) ($_SESSION['verified_mobile'] ?? '');
 
-    $documents = getHrmsEmployeeDocuments($pdo, (int) $employeeId);
     $existingDocuments = getHrmsExistingIdentityDocuments($pdo, (int) $employeeId);
-    $legacyDocuments = getHrmsLegacyDocumentNames($pdo, (int) $employeeId);
     $employee['legacy_pg_degree_status'] = $employee['pg_degree_status'] ?? '';
     $employee['legacy_pg_degree_institution'] = $employee['pg_degree_institution'] ?? '';
     unset($employee['pg_degree_status'], $employee['pg_degree_institution']);
@@ -50,9 +58,9 @@ try {
     echo json_encode([
         'success' => true,
         'employee' => $employee,
-        'documents' => $documents,
+        'documents' => [],
         'existing_documents' => $existingDocuments,
-        'legacy_documents' => $legacyDocuments
+        'legacy_documents' => []
     ]);
 
 } catch (PDOException $e) {

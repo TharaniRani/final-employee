@@ -8,6 +8,7 @@ header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/hrms-repository.php';
+require_once __DIR__ . '/../config/submission-access.php';
 require_once __DIR__ . '/../config/secure-session.php';
 
 startSecureSession();
@@ -39,11 +40,13 @@ if (($_SESSION['pending_mobile'] ?? '') !== $mobile
     exit;
 }
 
-if (!isLocalOtpRequest()) {
+$deliveryMode = $_SESSION['pending_otp_delivery_mode'] ?? '';
+if (!in_array($deliveryMode, ['local', 'whatsapp'], true)
+    || ($deliveryMode === 'local' && !isLocalOtpRequest())) {
     http_response_code(503);
     echo json_encode([
         'success' => false,
-        'message' => 'Local OTP verification is available only from this machine.'
+        'message' => 'OTP verification session is unavailable. Please request a new code.'
     ]);
     exit;
 }
@@ -112,6 +115,17 @@ try {
     }
 
     $employeeId = (int) $otpRecord['employee_id'];
+    $existingSubmission = getEmployeeSubmissionLockout($pdo, $employeeId);
+    if ($existingSubmission !== null) {
+        $pdo->rollBack();
+        http_response_code(409);
+        echo json_encode([
+            'success' => false,
+            'message' => employeeSubmissionLockoutMessage($existingSubmission)
+        ]);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE otp_verifications
         SET status = 'verified', used_at = NOW()
@@ -129,6 +143,7 @@ try {
 
     unset($_SESSION['pending_mobile']);
     unset($_SESSION['pending_employee_id']);
+    unset($_SESSION['pending_otp_delivery_mode']);
     $_SESSION['verified_employee_id'] = $employeeId;
     $_SESSION['verified_mobile'] = $mobile;
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));

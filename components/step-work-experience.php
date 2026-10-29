@@ -149,14 +149,14 @@ $stepIndex = $stepData['stepIndex'] ?? 8;
                 <div class="form-group">
                     <label class="form-label">Experience Letter (Optional)</label>
                     <div class="file-upload experience-letter-upload">
-                        <input type="file" class="file-upload-input" name="experience_letter[]" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="exp-letter-help">
+                        <input type="file" class="file-upload-input" name="experience_letter[]" accept="*/*" aria-describedby="exp-letter-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload experience letter">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                             </svg>
                             <p class="file-upload-text">Upload Experience Letter</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB (optional)</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB (optional)</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -172,21 +172,21 @@ $stepIndex = $stepData['stepIndex'] ?? 8;
                             </div>
                         </div>
                     </div>
-                    <div class="form-help" id="exp-letter-help">Upload experience letter if available (PDF, JPG, PNG - max 5MB)</div>
+                    <div class="form-help" id="exp-letter-help">Upload an experience letter if available (any safe file type, max 5MB)</div>
                     <div class="form-error" role="alert"></div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Pay Slip</label>
                     <div class="file-upload experience-payslip-upload">
-                        <input type="file" class="file-upload-input" name="experience_payslip[]" accept=".pdf,.jpg,.jpeg,.png" aria-describedby="payslip-help">
+                        <input type="file" class="file-upload-input" name="experience_payslip[]" accept="*/*" aria-describedby="payslip-help">
                         <div class="file-upload-zone" tabindex="0" role="button" aria-label="Upload pay slip">
                             <svg class="file-upload-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                             </svg>
                             <p class="file-upload-text">Upload Pay Slip</p>
-                            <p class="file-upload-hint">PDF, JPG, PNG up to 5MB (optional)</p>
+                            <p class="file-upload-hint">Any safe file type up to 5MB (optional)</p>
                         </div>
                         <div class="file-upload-info" style="display: none;">
                             <div class="file-upload-name">
@@ -202,7 +202,7 @@ $stepIndex = $stepData['stepIndex'] ?? 8;
                             </div>
                         </div>
                     </div>
-                    <div class="form-help" id="payslip-help">Upload latest pay slip (PDF, JPG, PNG - max 5MB)</div>
+                    <div class="form-help" id="payslip-help">Upload your latest pay slip (any safe file type, max 5MB)</div>
                     <div class="form-error" role="alert"></div>
                 </div>
             </div>
